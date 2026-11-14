@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ApplicationIcon>wwwroot/icons/app.ico</ApplicationIcon>
     <ImplicitUsings>enable</ImplicitUsings>
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
   </PropertyGroup>
 
   <ItemGroup><ProjectReference Include="../PersonalOrderDesk.Core/PersonalOrderDesk.Core.csproj" /><ProjectReference Include="../PersonalOrderDesk.SharedUI/PersonalOrderDesk.SharedUI.csproj" /></ItemGroup>

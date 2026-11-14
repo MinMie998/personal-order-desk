@@ -66,7 +66,7 @@ app.UseAuthentication();
 app.UseMiddleware<ClientApiAccessMiddleware>();
 app.UseMiddleware<LanAccessMiddleware>();
 app.UseMiddleware<MaintenanceRequestMiddleware>();
-app.UseAuthorization(); app.MapStaticAssets(); app.MapRazorPages().WithStaticAssets();
+app.UseAuthorization(); app.UseStaticFiles(); app.MapStaticAssets(); app.MapRazorPages().WithStaticAssets();
 app.MapGet("/healthz", async (IServiceProvider services, CancellationToken ct) =>
 {
     await using var scope = services.CreateAsyncScope();

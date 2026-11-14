@@ -22,6 +22,11 @@ jobs:
         run: |
           $version=if('${{ github.ref_type }}' -eq 'tag'){'${{ github.ref_name }}'.TrimStart('v')}else{'2.0.0-preview.1'}
           ./scripts/Build-Release.ps1 -Platform Windows -Version $version
+      - name: Verify published server and UI startup assets
+        shell: pwsh
+        run: |
+          $version=if('${{ github.ref_type }}' -eq 'tag'){'${{ github.ref_name }}'.TrimStart('v')}else{'2.0.0-preview.1'}
+          ./scripts/Test-Package.ps1 -Package "releases/build-Windows-$version/PersonalOrderDesk"
       - uses: actions/upload-artifact@v4
         with:
           name: windows-package
