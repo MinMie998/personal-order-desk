@@ -1,0 +1,168 @@
+@page
+@model PersonalOrderDesk.Pages.Settings.DataTransferModel
+@using PersonalOrderDesk.Domain
+@{
+    ViewData["Title"] = "数据迁移与导出";
+    var grouped = Model.Rows.Select((row, index) => (Row: row, Index: index))
+        .GroupBy(x => !string.IsNullOrWhiteSpace(x.Row.NewWorkItemGroupKey) ? x.Row.NewWorkItemGroupKey! : x.Row.SuggestedWorkItemGroupKey ?? $"source:{x.Row.SheetName}:{x.Row.RowNumber}").ToList();
+}
+<div class="page-heading"><div><h1>数据迁移与导出</h1><p>先上传原始工作簿并核对来源，再决定是否整批导入。未确认的信息会保留待核。</p></div><a class="btn btn-outline-primary" asp-page-handler="Export">下载只读 Excel 报告</a></div>
+@if (!string.IsNullOrWhiteSpace(Model.Notice)) { <div class="alert alert-success" role="status">@Model.Notice</div> }
+@if (!string.IsNullOrWhiteSpace(Model.Error)) { <div class="alert alert-danger" role="alert">@Model.Error</div> }
+<section class="surface mb-3"><div class="surface-header"><h2 class="h5 mb-0">1. 上传并生成只读预览</h2></div><div class="surface-body">
+<p>只选择原始 .xlsx 工作簿，最大 25 MB。文件暂存在本机数据目录 Temp/Imports，预览保留两小时。导入前不会写入正式记录。</p>
+<form method="post" enctype="multipart/form-data" asp-page-handler="Preview"><div class="input-group"><input asp-for="Workbook" type="file" accept=".xlsx" class="form-control" required /><button class="btn btn-primary" type="submit">上传并预览</button></div></form>
+</div></section>
+@if (Model.Preview is not null)
+{
+    <section class="surface mb-3"><div class="surface-header"><h2 class="h5 mb-0">2. 来源核对与差异预览</h2></div><div class="surface-body">
+        <p>文件：<strong>@Model.Preview.FileName</strong> · 指纹：<code>@Model.Preview.FileFingerprint</code> · @Model.Preview.Length 字节</p>
+        @if (Model.Preview.AlreadyImported) { <div class="alert alert-warning">该文件指纹已导入，重复确认不会重复入账。</div> }
+        @foreach (var warning in Model.IdentityWarnings) { <div class="alert alert-warning" role="status">@warning</div> }
+        @foreach (var warning in Model.Preview.Warnings) { <div class="alert alert-warning">@warning</div> }
+        <form method="post"><input type="hidden" asp-for="PreviewKey" />
+        @if (Model.Preview.DateIssues?.Count > 0)
+        {
+            <div class="alert alert-warning"><h3 class="h6">需要核对的日期</h3><p>原值、问题和建议处理方式会保留显示。只有来源明确或你能确认完整年份时才填写日期；空白月份/日期不猜年份。截止日期有跨表冲突时，请为冲突行选择同一个确认日期；无法确认可将相关来源行留待核对。</p>
+            @foreach (var issue in Model.Preview.DateIssues)
+            {
+                var index = Model.Rows.FindIndex(r => r.SheetName == issue.SheetName && r.RowNumber == issue.RowNumber);
+                var property = issue.Field switch { "ReceivedDate" => "ReceivedDateOverride", "EffectiveDueDate" => "DueDateOverride", "CompletedDate" => "CompletedDateOverride", "ShippedDate" => "ShippedDateOverride", "DeliveredDate" => "DeliveredDateOverride", "PaidDate" => "PaidDateOverride", _ => "" };
+                var dateValue = index < 0 ? null : property switch { "ReceivedDateOverride" => Model.Rows[index].ReceivedDateOverride, "DueDateOverride" => Model.Rows[index].DueDateOverride, "CompletedDateOverride" => Model.Rows[index].CompletedDateOverride, "ShippedDateOverride" => Model.Rows[index].ShippedDateOverride, "DeliveredDateOverride" => Model.Rows[index].DeliveredDateOverride, "PaidDateOverride" => Model.Rows[index].PaidDateOverride, _ => null };
+                <div class="border rounded p-2 mb-2"><strong>@issue.SheetName 第 @issue.RowNumber 行 · @PersonalOrderDesk.Pages.Settings.DataTransferModel.CnField(issue.Field)</strong>@if (issue.IsCrossRowConflict) { <span class="badge text-bg-warning">跨表冲突</span> }<div>来源值：@(issue.RawValue ?? "（空）") · @issue.Problem</div><div class="small">建议：@issue.SuggestedAction</div>
+                    @if (index >= 0 && property.Length > 0) { <label class="form-label mt-2">填写已核实日期（年-月-日）</label><input class="form-control date-override" type="date" name="Rows[@index].@property" value="@(dateValue?.ToString("yyyy-MM-dd"))" data-field="@issue.Field" data-group="@Model.DateConflictKey(issue)" data-conflict="@issue.IsCrossRowConflict.ToString().ToLowerInvariant()" /> }
+                </div>
+            }
+            </div>
+        }
+        @if (Model.Preview.Differences.Count > 0)
+        {
+            <h3 class="h6">与现有记录的差异</h3><div class="table-responsive"><table class="table table-sm"><thead><tr><th>来源</th><th>目标</th><th>字段</th><th>现有值</th><th>新文件值</th></tr></thead><tbody>
+            @foreach (var d in Model.Preview.Differences) { <tr><td>@d.SheetName 第 @d.RowNumber 行</td><td>@(d.TargetEntityId ?? "待匹配")</td><td>@PersonalOrderDesk.Pages.Settings.DataTransferModel.CnField(d.Field)</td><td>@(d.ExistingValue ?? "（空/未知）")</td><td>@(d.IncomingValue ?? "（空/未知）")</td></tr> }
+        </tbody></table></div>
+        }
+        @foreach (var group in grouped)
+        {
+            var groupFirst = group.First();
+            var groupSource = Model.Preview.Sheets.SelectMany(s => s.Rows).FirstOrDefault(x => x.SheetName == groupFirst.Row.SheetName && x.RowNumber == groupFirst.Row.RowNumber);
+            var groupName = groupFirst.Row.NewWorkItemProjectName ?? groupSource?.Values.GetValueOrDefault("ProjectName") ?? "待核对项目";
+            var groupOrder = groupSource?.Values.GetValueOrDefault("BusinessOrderNo") ?? "无编号";
+            <details class="surface mb-3 transfer-project" data-order="@groupOrder">
+                <summary class="surface-header"><strong>@groupName</strong><span class="text-secondary ms-2">编号 @groupOrder · @group.Count() 条来源</span></summary>
+                <div class="surface-body">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-5"><label class="form-label">对应已有工作项（无匹配时新建）</label><select class="form-select group-target"><option value="">新建/未匹配</option>@if (!string.IsNullOrWhiteSpace(groupFirst.Row.TargetEntityId) && Model.Preview.ExistingTargets?.All(t => t.Id.ToString() != groupFirst.Row.TargetEntityId) != false) { <option selected value="@groupFirst.Row.TargetEntityId">当前来源映射 @groupFirst.Row.TargetEntityId</option> }@foreach (var target in Model.Preview.ExistingTargets ?? System.Array.Empty<PersonalOrderDesk.Services.TransferWorkItemTarget>()) { <option selected="@(target.Id.ToString() == groupFirst.Row.TargetEntityId ? "selected" : null)" value="@target.Id">@target.BusinessOrderNo · @target.ProjectName</option> }</select></div>
+                        <div class="col-md-7"><label class="form-label">合并后的项目名称（只在明确合并时填写）</label><input class="form-control group-project-name" placeholder="不同名称的来源行要合并时填写一个统一名称" /></div>
+                        <div class="col-12"><button type="button" class="btn btn-sm btn-outline-primary confirm-default-group">确认本建议组来源行</button> <button type="button" class="btn btn-sm btn-outline-primary merge-business-group">明确合并此编号下的其他名称</button><span class="form-text ms-2">同编号异名默认分开；可留待核对或明确合并。不会自动合并。</span></div>
+                    </div>
+                    @foreach (var item in group)
+                    {
+                        var i = item.Index; var row = item.Row;
+                        var source = Model.Preview.Sheets.SelectMany(s => s.Rows).FirstOrDefault(x => x.SheetName == row.SheetName && x.RowNumber == row.RowNumber);
+                        <input type="hidden" asp-for="Rows[i].SheetName" /><input type="hidden" asp-for="Rows[i].RowNumber" /><input type="hidden" asp-for="Rows[i].EntityType" />
+                        <article class="border rounded p-3 mb-3 transfer-row" data-order="@(source?.Values.GetValueOrDefault("BusinessOrderNo") ?? "")">
+                            <h3 class="h6">@row.SheetName · 第 @row.RowNumber 行</h3>
+                            @if (source is not null) { <details class="mb-3"><summary>查看此来源行的原始字段</summary><dl class="row small mt-2">@foreach (var cell in source.Values) { <dt class="col-sm-3">@PersonalOrderDesk.Pages.Settings.DataTransferModel.CnField(cell.Key)</dt><dd class="col-sm-9 text-break">@(cell.Value ?? "（空）")</dd> }</dl></details> }
+                            <div class="row g-2">
+                                <input type="hidden" asp-for="Rows[i].TargetEntityId" class="row-target" />
+                                <div class="col-md-3"><label class="form-label">此行是否已核对关联</label><select class="form-select row-known" asp-for="Rows[i].IsKnown"><option value="false">待核对</option><option value="true">已核对</option></select></div>
+                                <div class="col-md-9"><label class="form-label" asp-for="Rows[i].Note">待核内容/处理说明</label><input class="form-control" asp-for="Rows[i].Note" /></div>
+                                @if (row.EntityType == "WorkItem")
+                                {
+                                    var order = source?.Values.GetValueOrDefault("BusinessOrderNo") ?? "";
+                                    var sourceName = source?.Values.GetValueOrDefault("ProjectName") ?? "";
+                                    var choices = Model.Preview.Sheets.SelectMany(s => s.Rows)
+                                        .Where(r => r.Values.GetValueOrDefault("BusinessOrderNo") == order)
+                                        .Select(r => r.Values.GetValueOrDefault("ProjectName") ?? "").Distinct().ToArray();
+                                    var selectedKey = row.NewWorkItemGroupKey ?? row.SuggestedWorkItemGroupKey;
+                                    if (choices.Length > 1)
+                                    {
+                                        <div class="col-md-6"><label class="form-label" for="source-group-@i">此来源行属于哪个待建项目</label>
+                                            <select id="source-group-@i" class="form-select new-group-key source-assignment" name="Rows[@i].NewWorkItemGroupKey">
+                                            @if (!choices.Any(choice => $"{order}｜{choice}" == selectedKey))
+                                            {
+                                                <option value="@selectedKey" data-project-name="@row.NewWorkItemProjectName" selected>已确认分组：@row.NewWorkItemProjectName</option>
+                                            }
+                                            @foreach (var choice in choices)
+                                            {
+                                                var choiceKey = $"{order}｜{choice}";
+                                                <option value="@choiceKey" data-project-name="@choice" selected="@(choiceKey == selectedKey ? "selected" : null)">@choice</option>
+                                            }
+                                            </select><span class="form-text">重复编号或同名来源请逐行核对。其他来源行可选择归到这里，不会修改原表。</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <input type="hidden" class="new-group-key" name="Rows[@i].NewWorkItemGroupKey" value="@selectedKey" />
+                                    }
+                                    <input type="hidden" class="new-project-name" name="Rows[@i].NewWorkItemProjectName" value="@(row.NewWorkItemProjectName ?? sourceName)" />
+                                }
+                                @if (row.SheetName == "完成进度" || row.SheetName == "基本信息" && !Model.Preview.Sheets.Where(s => s.SheetName == "完成进度").SelectMany(s => s.Rows).Any(r => r.Values.GetValueOrDefault("BusinessOrderNo") == source?.Values.GetValueOrDefault("BusinessOrderNo") && r.Values.GetValueOrDefault("ProjectName") == source?.Values.GetValueOrDefault("ProjectName")))
+                                {
+                                    <div class="col-md-3"><label class="form-label">工作状态</label><select class="form-select" asp-for="Rows[i].WorkStatusDecision"><option value="">采用来源已知状态；未知时需核对</option>@foreach (var x in Enum.GetValues<WorkStatus>()) { <option value="@x">@PersonalOrderDesk.Pages.Settings.DataTransferModel.CnStatus(x)</option> }</select></div>
+                                    <div class="col-md-3"><label class="form-label">取消前状态</label><select class="form-select" asp-for="Rows[i].CancelledFromStatusDecision"><option value="">来源未知时保持未知</option>@foreach (var x in Enum.GetValues<CancelledStatus>()) { <option value="@x">@PersonalOrderDesk.Pages.Settings.DataTransferModel.CnStatus(x)</option> }</select></div>
+                                    <div class="col-md-3"><label class="form-label">物流要求</label><select class="form-select" asp-for="Rows[i].ShippingRequirementDecision"><option value="">待确认</option><option value="None">无需寄送</option><option value="Required">需要寄送</option></select></div>
+                                    <div class="col-md-3"><label class="form-label">单号情况</label><select class="form-select" asp-for="Rows[i].NoTrackingNumber"><option value="">未知</option><option value="true">确认没有单号</option><option value="false">来源有单号</option></select></div>
+                                }
+                                @if (row.SheetName == "收益记录")
+                                {
+                                    <div class="col-md-3"><label class="form-label">成本记录是否完整</label><select class="form-select" asp-for="Rows[i].CostCompletenessConfirmed"><option value="">待确认</option><option value="true">确认完整</option><option value="false">未确认完整</option></select></div>
+                                    <div class="col-md-3"><label class="form-label">来源付款状态</label><select class="form-select" asp-for="Rows[i].ExpensePaymentDecision"><option value="">待核对</option><option value="Unpaid">未支付</option><option value="Paid">已支付</option></select></div>
+                                    @if (PersonalOrderDesk.Pages.Settings.DataTransferModel.IsReceiptCandidate(source))
+                                    { <div class="col-md-6"><label class="form-label">历史收款</label><select class="form-select" asp-for="Rows[i].ConfirmReceipt"><option value="">保留待核，不创建收款</option><option value="true">确认来源已结款且金额准确，建立历史收款</option><option value="false">保留待核</option></select></div> }
+                                    else { <input type="hidden" asp-for="Rows[i].ConfirmReceipt" /><div class="col-md-6 align-self-end text-secondary">此行不满足明确已结款且正数报价条件，不作为历史收款导入。</div> }
+                                }
+                            </div>
+                        </article>
+                    }
+                </div>
+            </details>
+        }
+        <div class="alert alert-warning"><strong>导入后以工作台中的记录为准。</strong> 未确认日期、金额、成本付款、物流和身份信息不会猜成今天、零、已付款或未寄出；未决原值可之后在工作台中维护。</div>
+        <div class="form-check mb-2"><input asp-for="ConfirmWholeBatch" class="form-check-input" /><label asp-for="ConfirmWholeBatch" class="form-check-label">我已检查以上来源行及差异，确认整批导入</label></div>
+        <button class="btn btn-outline-primary" type="submit" asp-page-handler="Differences">按当前选择刷新差异预览</button>
+        <button class="btn btn-primary" type="submit" asp-page-handler="Confirm" onclick="return document.getElementById('ConfirmWholeBatch').checked;">确认整批导入</button>
+        </form>
+    </div></section>
+}
+<section class="surface"><div class="surface-header"><h2 class="h5 mb-0">只读报告导出</h2></div><div class="surface-body"><p>导出包含工作项、财务、分配、成本与物流信息。报告用于查看和留档，不是备份，也不能修改后回写。</p><a class="btn btn-outline-primary" asp-page-handler="Export">下载 Excel 报告</a></div></section>
+@section Scripts { <script>
+document.querySelectorAll('.confirm-default-group').forEach(button => button.addEventListener('click', () => {
+    const group = button.closest('.transfer-project');
+    group.querySelectorAll('.row-known').forEach(x => x.value = 'true');
+    const id = group.querySelector('.group-target').value;
+    if (id) group.querySelectorAll('.row-target').forEach(x => x.value = id);
+}));
+document.querySelectorAll('.group-target').forEach(select => select.addEventListener('change', () => {
+    const group = select.closest('.transfer-project'); group.querySelectorAll('.row-target').forEach(x => x.value = select.value);
+    if (select.value) group.querySelectorAll('.row-known').forEach(x => x.value = 'true');
+}));
+document.querySelectorAll('.merge-business-group').forEach(button => button.addEventListener('click', () => {
+    const group = button.closest('.transfer-project'), order = group.dataset.order;
+    if (!order || !confirm('请确认同一业务编号的来源行确属同一个工作项。')) return;
+    const name = group.querySelector('.group-project-name').value.trim();
+    if (!name) { alert('请填写统一项目名称后再合并。'); return; }
+    const key = 'user-' + crypto.randomUUID();
+    document.querySelectorAll('.transfer-project').forEach(other => {
+        if (other.dataset.order === order) {
+            other.querySelectorAll('.new-group-key').forEach(x => {
+                if (x.tagName === 'SELECT' && !Array.from(x.options).some(option => option.value === key)) {
+                    const option = new Option(name, key); option.dataset.projectName = name; x.add(option);
+                }
+                x.value = key;
+            });
+            other.querySelectorAll('.new-project-name').forEach(x => x.value = name);
+            other.querySelectorAll('.row-known').forEach(x => x.value = 'true');
+        }
+    });
+}));
+document.querySelectorAll('.source-assignment').forEach(select => select.addEventListener('change', () => {
+    const row = select.closest('.transfer-row');
+    row.querySelector('.new-project-name').value = select.selectedOptions[0].dataset.projectName;
+    row.querySelector('.row-target').value = '';
+    row.querySelector('.row-known').value = 'true';
+}));
+document.querySelectorAll('.date-override[data-conflict="true"]').forEach(input => input.addEventListener('change', () => {
+    document.querySelectorAll('.date-override[data-conflict="true"]').forEach(other => { if (other.dataset.field === input.dataset.field && other.dataset.group === input.dataset.group) other.value = input.value; });
+}));
+</script> }

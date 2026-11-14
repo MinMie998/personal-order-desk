@@ -1,0 +1,25 @@
+@page
+@model PersonalOrderDesk.Pages.Settings.NetworkModel
+@{ ViewData["Title"] = "手机与局域网"; }
+<div class="page-heading"><div><h1>手机与局域网</h1><p>让同一局域网里的手机访问这台电脑的工作台。</p></div><a class="btn btn-outline-secondary" asp-page="/Settings/Index">返回设置</a></div>
+@if (Model.Notice is not null) { <div class="alert alert-success" role="status">@Model.Notice</div> }
+@if (Model.ErrorMessage is not null) { <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div> }
+<section class="form-section">
+    <h2>访问开关</h2>
+    <p>当前运行状态：<strong>@(Model.Network.Current.Enabled ? "局域网已开启" : "仅本机访问")</strong>。设置更改后需要重新启动应用。</p>
+    <form method="post">
+        <div class="form-check mb-3"><input asp-for="Enabled" class="form-check-input" /><label asp-for="Enabled" class="form-check-label">允许局域网访问（需要密码）</label></div>
+        <div class="row g-3">
+            <div class="col-md-6"><label asp-for="Password" class="form-label">设置或更换密码</label><input asp-for="Password" type="password" class="form-control" autocomplete="new-password" minlength="10" maxlength="128" /><div class="form-text">至少10个字符；已有密码时留空保留。</div></div>
+            <div class="col-md-6"><label asp-for="PasswordConfirmation" class="form-label">再次输入密码</label><input asp-for="PasswordConfirmation" type="password" class="form-control" autocomplete="new-password" maxlength="128" /></div>
+        </div>
+        <button type="submit" class="btn btn-primary mt-3">保存访问设置</button>
+    </form>
+</section>
+<section class="form-section">
+    <h2>手机如何访问</h2>
+    <ol class="connection-steps"><li>电脑和手机连接同一个可信Wi-Fi或局域网，电脑保持开机且工作台正在运行。</li><li>开启访问并重启工作台后，在手机浏览器输入下面的地址，再输入密码。</li><li>如果Windows防火墙询问网络权限，只允许你自己的专用网络。不要设置路由器公网端口映射。</li></ol>
+    @if (Model.Network.Addresses.Count == 0) { <p>当前没有检测到可用的IPv4局域网地址；请连接Wi-Fi或网线后重启。</p> }
+    @foreach (var address in Model.Network.Addresses) { <p><code class="lan-address">http://@address:5059</code> <span class="text-secondary small">@(Model.Network.Current.Enabled ? "当前可用地址" : "开启并重启后可用")</span></p> }
+    <p class="form-text">仅支持本机及内网IPv4地址；不会自动开放防火墙。当前为HTTP局域网访问，请只在可信网络使用。手机不能修改网络设置、执行恢复或关闭电脑上的工作台。</p>
+</section>

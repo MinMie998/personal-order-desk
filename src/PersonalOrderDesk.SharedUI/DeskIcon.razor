@@ -1,0 +1,12 @@
+<svg viewBox="0 0 24 24" class="desk-icon" aria-hidden="true"><path d="@IconPath" /></svg>
+@code {
+    [Parameter] public string Name {get;set;}="orders";
+    private string IconPath=>Name switch {
+        "overview"=>"M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 17l3 3 5-6",
+        "money"=>"M4 5h15v15H4z M4 5V3h13 M14 11h7v5h-7z M17 13.5h.01",
+        "shipping"=>"M3 7l9-5 9 5v10l-9 5-9-5z M3 7l9 5 9-5 M12 12v10 M7 5l10 5",
+        "recycle"=>"M3 6h18 M9 6V3h6v3 M5 6l1 15h12l1-15 M10 10v7 M14 10v7",
+        "settings"=>"M12 3v3 M12 18v3 M3 12h3 M18 12h3 M6 6l2 2 M16 16l2 2 M18 6l-2 2 M8 16l-2 2 M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8",
+        _=>"M8 4H5v17h14V4h-3 M8 2h8v5H8z M8 11h8 M8 15h8 M8 18h5"
+    };
+}

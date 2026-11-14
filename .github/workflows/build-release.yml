@@ -1,0 +1,84 @@
+name: Build and release
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Test business rules, API access and snapshot isolation
+        run: dotnet test tests/PersonalOrderDesk.Tests -c Release --verbosity minimal
+      - name: Build Windows desktop and Web server
+        shell: pwsh
+        run: |
+          $version=if('${{ github.ref_type }}' -eq 'tag'){'${{ github.ref_name }}'.TrimStart('v')}else{'2.0.0-preview.1'}
+          ./scripts/Build-Release.ps1 -Platform Windows -Version $version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-package
+          path: |
+            releases/build-Windows-*/*.zip
+            releases/build-Windows-*/SHA256SUMS.txt
+          if-no-files-found: error
+  android:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: microsoft
+          java-version: '21'
+      - run: dotnet workload install maui-android
+      - name: Build Android APK
+        shell: pwsh
+        env:
+          SIGNING_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          SIGNING_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          $version=if('${{ github.ref_type }}' -eq 'tag'){'${{ github.ref_name }}'.TrimStart('v')}else{'2.0.0-preview.1'}
+          if($env:SIGNING_KEY){
+            $key=Join-Path $env:RUNNER_TEMP 'release.keystore'
+            $password=Join-Path $env:RUNNER_TEMP 'signing-password.txt'
+            [IO.File]::WriteAllBytes($key,[Convert]::FromBase64String($env:SIGNING_KEY))
+            [IO.File]::WriteAllText($password,$env:SIGNING_PASSWORD)
+            ./scripts/Build-Release.ps1 -Platform Android -Version $version -KeyStore $key -PasswordFile $password
+          }elseif('${{ github.ref_type }}' -eq 'tag'){throw '正式发布必须配置稳定签名密钥。'}
+          else{./scripts/Build-Release.ps1 -Platform Android -Version $version}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-package
+          path: |
+            releases/build-Android-*/*.apk
+            releases/build-Android-*/SHA256SUMS.txt
+          if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+      - name: Publish packages and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          cat packages/windows-package/SHA256SUMS.txt packages/android-package/SHA256SUMS.txt > packages/SHA256SUMS.txt
+          flags=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$GITHUB_REF_NAME" --notes "Windows、Web 服务和 Android 工作台预览版。安装前请阅读仓库说明并备份账本。" "${flags[@]}" packages/windows-package/*.zip packages/android-package/*.apk packages/SHA256SUMS.txt

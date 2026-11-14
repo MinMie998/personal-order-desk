@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - 个人接单工作台</title>
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="icon" type="image/svg+xml" href="~/icons/app.svg" asp-append-version="true" />
+    <link rel="icon" type="image/x-icon" href="~/favicon.ico" asp-append-version="true" />
+    <link rel="apple-touch-icon" href="~/icons/apple-touch-icon.png" />
+    <script type="importmap"></script>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/PersonalOrderDesk.styles.css" asp-append-version="true" />
+</head>
+<body>
+    <partial name="_IconSymbols" />
+    @{
+        var currentPath = Context.Request.Path.Value ?? "/";
+        bool IsActive(string target) => target == "/Index"
+            ? currentPath == "/" || currentPath.Equals("/Index", StringComparison.OrdinalIgnoreCase)
+            : currentPath.StartsWith(target, StringComparison.OrdinalIgnoreCase);
+    }
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <div class="app-shell">
+        <header class="mobile-header">
+            <a class="brand-link" asp-page="/Overview"><img class="brand-mark" src="~/icons/app.svg" alt="" width="32" height="32" /><span>个人接单工作台</span></a>
+            <button class="mobile-nav-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#primary-nav" aria-controls="primary-nav" aria-expanded="false" aria-label="切换主导航"><span class="toggle-lines" aria-hidden="true"></span></button>
+        </header>
+        <aside class="side-rail collapse" id="primary-nav" aria-label="主导航">
+            <a class="brand-link desktop-brand" asp-page="/Overview"><img class="brand-mark" src="~/icons/app.svg" alt="" width="32" height="32" /><span>个人接单工作台</span></a>
+            <nav class="primary-nav">
+                <a class="app-nav-link @(IsActive("/Overview") ? "active" : "")" aria-current="@(IsActive("/Overview") ? "page" : null)" asp-page="/Overview"><svg class="nav-icon" aria-hidden="true"><use href="#icon-dashboard" /></svg><span>概览</span></a>
+                <a class="app-nav-link @(IsActive("/Index") ? "active" : "")" aria-current="@(IsActive("/Index") ? "page" : null)" asp-page="/Index"><svg class="nav-icon" aria-hidden="true"><use href="#icon-dashboard" /></svg><span>今日工作台</span></a>
+                <a class="app-nav-link @(IsActive("/WorkItems") ? "active" : "")" aria-current="@(IsActive("/WorkItems") ? "page" : null)" asp-page="/WorkItems/Index"><svg class="nav-icon" aria-hidden="true"><use href="#icon-orders" /></svg><span>工作项</span></a>
+                <a class="app-nav-link @(IsActive("/Finance") ? "active" : "")" aria-current="@(IsActive("/Finance") ? "page" : null)" asp-page="/Finance/Index"><svg class="nav-icon" aria-hidden="true"><use href="#icon-finance" /></svg><span>收支结算</span></a>
+                <a class="app-nav-link @(IsActive("/Shipping") ? "active" : "")" aria-current="@(IsActive("/Shipping") ? "page" : null)" asp-page="/Shipping/Index"><svg class="nav-icon" aria-hidden="true"><use href="#icon-shipping" /></svg><span>物流履约</span></a>
+            </nav>
+            <div class="rail-bottom">
+                @if (PersonalOrderDesk.Services.NetworkAccessService.IsLocal(Context))
+                { <a class="app-nav-link @(IsActive("/Settings") ? "active" : "")" aria-current="@(IsActive("/Settings") ? "page" : null)" asp-page="/Settings/Index"><svg class="nav-icon" aria-hidden="true"><use href="#icon-settings" /></svg><span>设置与备份</span></a> }
+                else if (User.Identity?.IsAuthenticated == true)
+                { <form method="post" asp-page="/Access/Login" asp-page-handler="Logout"><button class="btn btn-outline-secondary w-100" type="submit">退出登录</button></form> }
+                <div class="local-status"><span class="local-dot" aria-hidden="true"></span>数据保存在电脑本机</div>
+            </div>
+        </aside>
+        <div class="main-column">
+            <main id="main-content" class="main-content" role="main" tabindex="-1">
+                @RenderBody()
+            </main>
+            <footer class="app-footer">个人接单工作台 <span aria-hidden="true">·</span> 本地数据</footer>
+        </div>
+    </div>
+    @if (TempData["ReceiptAmountCents"] is string amountText && long.TryParse(amountText, out var receiptCents) && receiptCents > 0)
+    {
+        <div class="receipt-toast" role="status" aria-live="polite"><span class="receipt-check" aria-hidden="true">✓</span><div><span>收款已记录</span><strong>＋ ¥@((receiptCents / 100m).ToString("N2"))</strong></div></div>
+    }
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

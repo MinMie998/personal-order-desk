@@ -1,0 +1,19 @@
+@page "{id:guid}"
+@model PersonalOrderDesk.Pages.WorkItems.DeleteModel
+@using PersonalOrderDesk.Domain
+@{
+    var p = Model.Preview!;
+    var w = p.WorkItem;
+    ViewData["Title"] = "删除工作项";
+    string Money(long cents) => $"¥{cents / 100m:N2}";
+}
+<div class="page-heading"><div><h1>删除工作项</h1><p>移入回收站后可以恢复。</p></div><a class="btn btn-outline-secondary" asp-page="/WorkItems/Details" asp-route-id="@w.Id">返回订单</a></div>
+@if (Model.ErrorMessage is not null) { <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div> }
+<section class="surface delete-review"><div class="surface-header"><h2 class="h5 mb-1">@w.ProjectName</h2><span class="project-number text-secondary">@(w.BusinessOrderNo ?? "未填写业务编号")</span></div><div class="surface-body">
+<p>此项目会从订单列表、今日待办及概览、收支统计中移除。关联记录保留在回收站中，恢复后重新计入。</p>
+<dl class="detail-grid"><div class="detail-item"><dt>收退款记录</dt><dd>@p.TransactionCount 笔 · 当前净收 @Money(p.NetReceivedCents)</dd></div><div class="detail-item"><dt>支出记录</dt><dd>@p.ExpenseCount 笔 · 有效支出 @Money(p.TotalCostCents)</dd></div><div class="detail-item"><dt>物流</dt><dd>@(p.ShipmentStatus switch { ShipmentStatus.Shipped => "已寄出", ShipmentStatus.Delivered => "已签收", ShipmentStatus.NotShipped => "未寄出", ShipmentStatus.Unknown => "历史状态待核", _ => "无物流记录" })</dd></div><div class="detail-item"><dt>关联订单</dt><dd>@p.RelationCount 个关系 · 关系保留，其他订单继续保留</dd></div></dl>
+@if (p.HasSharedTransaction) { <div class="alert alert-warning">此项目涉及合并收款。删除只移除本项目在统计中的份额，其他订单的份额继续计入；整笔交易与全部分配仍保留，恢复后可继续核对。</div> }
+@if (p.ShipmentStatus is ShipmentStatus.Shipped or ShipmentStatus.Delivered) { <p class="text-danger">已有寄出或签收记录，删除后将从物流页面隐藏，请确认不再需要跟进。</p> }
+<p class="small text-secondary">收退款、支出数量包含已撤销记录。工程文件保留在原来的文件夹中。</p>
+<form method="post"><input asp-for="ExpectedVersion" type="hidden"/><label class="form-check my-3"><input asp-for="ConfirmDelete" class="form-check-input" required/><span class="form-check-label">我已核对编号和项目，确认移入回收站</span></label><div class="inline-actions"><button class="btn btn-danger" type="submit">确认删除工作项</button><a class="btn btn-outline-secondary" asp-page="/WorkItems/Details" asp-route-id="@w.Id">取消</a></div></form>
+</div></section>

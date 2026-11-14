@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PersonalOrderDesk.SharedUI/PersonalOrderDesk.SharedUI.csproj" />
+    <Project Path="src/PersonalOrderDesk.Desktop/PersonalOrderDesk.Desktop.csproj" />
+    <Project Path="src/PersonalOrderDesk.Client/PersonalOrderDesk.Client.csproj" />
+    <Project Path="src/PersonalOrderDesk.Core/PersonalOrderDesk.Core.csproj" />
+    <Project Path="src/PersonalOrderDesk.Launcher/PersonalOrderDesk.Launcher.csproj" />
+    <Project Path="src/PersonalOrderDesk/PersonalOrderDesk.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PersonalOrderDesk.Tests/PersonalOrderDesk.Tests.csproj" />
+  </Folder>
+</Solution>

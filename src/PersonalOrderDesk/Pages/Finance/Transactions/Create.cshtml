@@ -1,0 +1,54 @@
+@page
+@model PersonalOrderDesk.Pages.Finance.Transactions.CreateModel
+@using PersonalOrderDesk.Domain
+@{
+    ViewData["Title"] = "记录收款 / 退款";
+    string WorkLabel(WorkStatus status) => status switch { WorkStatus.NotStarted => "未开始", WorkStatus.InProgress => "进行中", WorkStatus.Completed => "已完成", WorkStatus.NeedsRework => "需返工", _ => "已取消" };
+}
+<div class="page-heading"><div><h1>记录收款 / 退款</h1><p>填写真实交易总额，并将该笔交易分配到一个或多个工作项。日期为新录入手工事实。</p></div><a class="btn btn-outline-secondary" asp-page="/Finance/Index">返回收支总览</a></div>
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage)) { <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div> }
+<div asp-validation-summary="ModelOnly" role="alert"></div>
+<form method="post" class="surface"><div class="surface-body">
+    <div class="row g-3">
+        <div class="col-md-3"><label asp-for="Input.Type" class="form-label">交易类型</label><select asp-for="Input.Type" class="form-select"><option value="Receipt">收款</option><option value="Refund">退款</option></select></div>
+        <div class="col-md-3"><label asp-for="Input.AmountYuan" class="form-label">交易总额（元）</label><input asp-for="Input.AmountYuan" type="number" min="0.01" step="0.01" class="form-control" required /></div>
+        <div class="col-md-3"><label asp-for="Input.TransactionDate" class="form-label">实际交易日期</label><input asp-for="Input.TransactionDate" type="date" max="@Model.BusinessToday.ToString("yyyy-MM-dd")" class="form-control" /><div class="form-text">不确定可以留空，不影响收款和利润。</div></div>
+        <div class="col-md-3"><label asp-for="Input.PaymentMethod" class="form-label">方式</label><select asp-for="Input.PaymentMethod" class="form-select payment-method"><option value="">未选择</option><option>微信</option><option>支付宝</option><option>银行卡</option><option>现金</option><option>其他</option></select><input asp-for="Input.CustomPaymentMethod" class="form-control mt-2 custom-payment-method" placeholder="自定义收付方式" hidden /></div>
+        <div class="col-md-6"><label asp-for="Input.ExternalReference" class="form-label">外部参考号</label><input asp-for="Input.ExternalReference" class="form-control" /></div>
+        <div class="col-md-6"><label asp-for="Input.Notes" class="form-label">说明</label><input asp-for="Input.Notes" class="form-control" /></div>
+    </div>
+    <section class="form-section mt-4"><div class="d-flex justify-content-between align-items-center mb-3"><h2 class="mb-0">分配到工作项</h2><button class="btn btn-outline-secondary" id="add-allocation" type="button">＋ 添加分配</button></div>
+        <div id="allocation-rows" class="allocation-list">
+        @for (var i = 0; i < Model.Input.Allocations.Count; i++)
+        {
+            <div class="allocation-row allocation-edit-row"><div class="row g-2 align-items-end"><div class="col-md-8"><label asp-for="Input.Allocations[i].WorkItemId" class="form-label">工作项</label><select asp-for="Input.Allocations[i].WorkItemId" class="form-select" required><option value="">请选择</option>@foreach (var item in Model.WorkItems) { <option value="@item.Id">@(item.BusinessOrderNo ?? "无业务编号") · @item.ProjectName · @WorkLabel(item.Status)</option> }</select></div><div class="col-md-3"><label asp-for="Input.Allocations[i].AmountYuan" class="form-label">分配金额（元）</label><input asp-for="Input.Allocations[i].AmountYuan" type="number" min="0.01" step="0.01" class="form-control" required /></div><div class="col-md-1"><button class="btn btn-outline-danger remove-allocation" type="button" aria-label="移除此分配">移除</button></div></div></div>
+        }
+        </div>
+    </section>
+    <template id="allocation-template"><div class="allocation-row allocation-edit-row"><div class="row g-2 align-items-end"><div class="col-md-8"><label class="form-label" for="Input_Allocations___i___WorkItemId">工作项</label><select id="Input_Allocations___i___WorkItemId" name="Input.Allocations[__i__].WorkItemId" class="form-select" required><option value="">请选择</option>@foreach (var item in Model.WorkItems) { <option value="@item.Id">@(item.BusinessOrderNo ?? "无业务编号") · @item.ProjectName · @WorkLabel(item.Status)</option> }</select></div><div class="col-md-3"><label class="form-label" for="Input_Allocations___i___AmountYuan">分配金额（元）</label><input id="Input_Allocations___i___AmountYuan" name="Input.Allocations[__i__].AmountYuan" type="number" min="0.01" step="0.01" class="form-control" required /></div><div class="col-md-1"><button class="btn btn-outline-danger remove-allocation" type="button" aria-label="移除此分配">移除</button></div></div></div></template>
+    <input asp-for="Input.IdempotencyKey" type="hidden" />
+    <div class="inline-actions mt-4"><button class="btn btn-primary" type="submit">保存交易和分配</button><a class="btn btn-outline-secondary" asp-page="/Finance/Index">取消</a></div>
+</div></form>
+@section Scripts {
+<script>
+(() => {
+  const list = document.getElementById('allocation-rows');
+  const template = document.getElementById('allocation-template');
+  const reindex = () => list.querySelectorAll('.allocation-edit-row').forEach((row, i) => {
+    row.querySelectorAll('[name]').forEach(el => el.name = el.name.replace(/Input\.Allocations\[\d+\]/, `Input.Allocations[${i}]`));
+    row.querySelectorAll('[id]').forEach(el => el.id = el.id.replace(/Input_Allocations_\d+__/, `Input_Allocations_${i}__`));
+    row.querySelectorAll('label[for]').forEach(el => el.htmlFor = el.htmlFor.replace(/Input_Allocations_\d+__/, `Input_Allocations_${i}__`));
+  });
+  document.getElementById('add-allocation')?.addEventListener('click', () => {
+    const i = list.querySelectorAll('.allocation-edit-row').length;
+    list.insertAdjacentHTML('beforeend', template.innerHTML.replaceAll('__i__', String(i)));
+  });
+  list?.addEventListener('click', e => {
+    const button = e.target.closest('.remove-allocation');
+    if (!button) return;
+    const rows = list.querySelectorAll('.allocation-edit-row');
+    if (rows.length > 1) { button.closest('.allocation-edit-row').remove(); reindex(); }
+  });
+})();
+</script>
+}
