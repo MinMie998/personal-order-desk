@@ -1,4 +1,4 @@
-param([ValidateSet('Windows','Android')][string]$Platform='Windows',[string]$Version='2.0.0-preview.1',[string]$Dotnet='dotnet',[string]$AndroidSdkDirectory=$env:ANDROID_HOME,[string]$JavaSdkDirectory=$env:JAVA_HOME,[string]$KeyStore,[string]$PasswordFile)
+param([ValidateSet('Windows','Android')][string]$Platform='Windows',[string]$Version='2.0.0-preview.2',[string]$Dotnet='dotnet',[string]$AndroidSdkDirectory=$env:ANDROID_HOME,[string]$JavaSdkDirectory=$env:JAVA_HOME,[string]$KeyStore,[string]$PasswordFile)
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
 Set-Location $projectRoot

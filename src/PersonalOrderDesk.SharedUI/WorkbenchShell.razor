@@ -5,8 +5,8 @@
         <div class="desk-rail-note">数据由你自己保存<br/>本地 · 局域网 · 只读副本</div>
     </aside>
     <main class="desk-main">
-        <div class="desk-source"><span class="source-dot @(Session.ReadOnly?"snapshot":"")"></span><strong>@Session.SourceLabel</strong>@if(Session.ReadOnly){<span>只读</span>}<button @onclick='()=>Navigate("settings")'>连接与数据</button></div>
-        @if(Session.ReadOnly&&Session.Profile.SnapshotAt is {} time){<p class="desk-muted snapshot-time">副本更新：@time.ToLocalTime().ToString("yyyy-MM-dd HH:mm") · 修改订单请连接电脑</p>}
+        <div class="desk-source"><span class="source-dot @(Session.Profile.Mode==WorkspaceMode.PcSnapshot?"snapshot":"")"></span><strong>@Session.SourceLabel</strong>@if(Session.ReadOnly){<span>只读</span>}<button @onclick='()=>Navigate("settings")'>连接与数据</button></div>
+        @if(Session.Profile.Mode==WorkspaceMode.PcSnapshot&&Session.Profile.SnapshotAt is {} time){<p class="desk-muted snapshot-time">副本更新：@time.ToLocalTime().ToString("yyyy-MM-dd HH:mm") · 可离线修改，同步时合并两端改动</p>}
         @if(!string.IsNullOrEmpty(_error)){<div class="desk-alert danger" role="alert">@_error<button @onclick='()=>_error=null' aria-label="关闭提示">×</button></div>}
         @if(!string.IsNullOrEmpty(_notice)){<div class="desk-alert success" role="status">@_notice</div>}
         @if(_busy){<div class="desk-loading" role="status">正在处理…</div>}
@@ -51,9 +51,9 @@
         @if(_page=="settings"&&_detail is null){
             @if(Session.CanSwitch){<section class="desk-card"><h2>版本与更新</h2><p class="desk-muted">当前版本 @GitHubUpdates.CurrentVersion · 从项目 GitHub 发布页获取更新</p><button disabled="@_busy" @onclick='CheckUpdate'>检查更新</button>@if(_update is not null){<p>可用版本 @_update.Version</p><p class="pre-line desk-muted">@_update.Notes</p><button class="primary" disabled="@_busy" @onclick='DownloadUpdate'>下载并校验安装包</button>}<p class="desk-muted">更新仅下载程序，不上传账本。安装前请备份；Windows需先退出后台服务，Android由系统确认安装。</p></section>}
             <header class="desk-heading"><div><h1>连接与数据</h1><p class="desk-muted">始终清楚当前使用哪一套账本。</p></div></header>
-            <section class="desk-card"><h2>当前数据来源</h2><p><span class="badge @(Session.ReadOnly?"orange":"green")">@Session.SourceLabel</span></p><p class="desk-muted">切换数据来源不会合并账本；连接中断时不会自动切换。</p>@if(Session.CanSwitch){<div class="desk-actions"><button class="primary" disabled="@_busy" @onclick='UseLocal'>@(Session.IsMobile?"打开手机独立账本":"打开本机工作台")</button><button disabled="@(_busy||Session.Profile.SnapshotAt is null)" @onclick='UseSnapshot'>查看电脑只读副本</button></div>}</section>
-            @if(Session.CanSwitch){<section class="desk-card"><h2>连接电脑</h2><p class="desk-muted">电脑打开工作台并允许局域网访问后，填写它显示的地址和访问密码。</p><div class="desk-form-grid"><label>电脑地址<input @bind="_serverAddress" placeholder="http://192.168.1.10:5059"/></label><label>访问密码<input type="password" @bind="_serverPassword" autocomplete="off" maxlength="128"/></label></div><button class="primary" disabled="@_busy" @onclick='ConnectPc'>连接电脑账本</button></section><section class="desk-card"><h2>一键同步 PC 副本</h2><p>从已连接的电脑下载一份只读副本，离线时也能查看。手机独立账本保留。</p><p class="desk-muted">上次更新：@(Session.Profile.SnapshotAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm")??"尚未同步")</p><div class="desk-actions"><button class="primary" disabled="@(_busy||Session.Profile.ServerInstance is null)" @onclick='SyncPc'>一键同步PC副本</button><button disabled="@(_busy||Session.Profile.SnapshotAt is null)" @onclick='UseSnapshot'>查看副本</button></div></section>}
-            @if(Session.Profile.LastSyncProtection is {} protection){<section class="desk-card"><h2>上次同步保护</h2><p class="desk-path">@protection</p><p class="desk-muted">两端备份先完成，再更新手机副本；记录可用于回溯。双向离线合并尚未启用。</p></section>}<section class="desk-card"><h2>备份与高级管理</h2>@if(Session.IsMobile){<p class="desk-muted">独立账本备份保存在手机应用目录，可通过系统保存或分享。</p><button disabled="@(_busy||Session.Profile.Mode!=WorkspaceMode.Local)" @onclick='BackupLocal'>备份手机独立账本</button>}else{<p class="desk-muted">导入Excel、完整备份恢复、局域网密码及历史资料核对，继续使用电脑的高级管理。</p><div class="desk-actions"><button @onclick='()=>OpenAdvanced("Settings")'>设置与备份</button><button @onclick='()=>OpenAdvanced("Settings/Network")'>设置手机连接</button></div>}</section>
+            <section class="desk-card"><h2>当前数据来源</h2><p><span class="badge @(Session.ReadOnly?"orange":"green")">@Session.SourceLabel</span></p><p class="desk-muted">切换数据来源不会合并账本；连接中断时不会自动切换。</p>@if(Session.CanSwitch){<div class="desk-actions"><button class="primary" disabled="@_busy" @onclick='UseLocal'>@(Session.IsMobile?"打开手机独立账本":"打开本机工作台")</button><button disabled="@(_busy||Session.Profile.SnapshotAt is null)" @onclick='UseSnapshot'>打开电脑离线副本</button></div>}</section>
+            @if(Session.CanSwitch){<section class="desk-card"><h2>连接电脑</h2><p class="desk-muted">电脑打开工作台并允许局域网访问后，填写它显示的地址和访问密码。</p><div class="desk-form-grid"><label>电脑地址<input @bind="_serverAddress" placeholder="http://192.168.1.10:5059"/></label><label>访问密码<input type="password" @bind="_serverPassword" autocomplete="off" maxlength="128"/></label></div><button class="primary" disabled="@_busy" @onclick='ConnectPc'>连接电脑账本</button></section><section class="desk-card"><h2>双向同步电脑账本</h2><p>首次同步建立电脑副本。以后可离线修改，重新联网时预览并合并两端改动；同步前自动备份两端。手机独立账本继续单独保存。</p><p class="desk-muted">上次更新：@(Session.Profile.SnapshotAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm")??"尚未同步")</p><div class="desk-actions"><button class="primary" disabled="@(_busy||Session.Profile.ServerInstance is null)" @onclick='SyncPc'>预览并同步</button><button disabled="@(_busy||Session.Profile.SnapshotAt is null)" @onclick='UseSnapshot'>打开离线副本</button></div></section>}
+            @if(Session.Profile.LastSyncProtection is {} protection){<section class="desk-card"><h2>上次同步保护</h2><button disabled="@_busy" @onclick='ExportSyncBackup'>导出两端同步备份</button><p class="desk-path">@protection</p><p class="desk-muted">两端备份先完成，再合并改动；可按同步编号在电脑设置中找到保护备份，手机备份保存在应用内。</p></section>}<section class="desk-card"><h2>备份与高级管理</h2>@if(Session.IsMobile){<p class="desk-muted">独立账本备份保存在手机应用目录，可通过系统保存或分享。</p><button disabled="@(_busy||Session.Profile.Mode!=WorkspaceMode.Local)" @onclick='BackupLocal'>备份手机独立账本</button>}else{<p class="desk-muted">导入Excel、完整备份恢复、局域网密码及历史资料核对，继续使用电脑的高级管理。</p><div class="desk-actions"><button @onclick='()=>OpenAdvanced("Settings")'>设置与备份</button><button @onclick='()=>OpenAdvanced("Settings/Network")'>设置手机连接</button></div>}</section>
         }
         <footer class="desk-footer">个人接单工作台 · @Session.SourceLabel</footer>
     </main>
@@ -61,7 +61,16 @@
 @if(_dialog is not null){
     <div class="desk-dialog-backdrop" @onkeydown="DialogKey" tabindex="-1"><section class="desk-dialog" role="dialog" aria-modal="true" aria-label="@DialogTitle"><div class="dialog-heading"><h2>@DialogTitle</h2><button class="icon-button" aria-label="关闭窗口" @onclick='CloseDialog' disabled="@_busy">×</button></div>
         @if(!string.IsNullOrEmpty(_dialogError)){<div class="desk-alert danger" role="alert">@_dialogError</div>}
-        @if(_dialog=="order"){
+        @if(_dialog=="sync"&&_syncReview is {} review){
+            <p>电脑有 @review.PcChanges 处改动，手机有 @review.PhoneChanges 处改动。</p>
+            <p class="green-text">同步前的电脑备份、手机副本备份与共同版本备份已完成。</p>
+            <p class="desk-muted">没有冲突的改动会合并。手机独立账本保持单独保存。</p>
+            @foreach(var warning in review.Warnings){<p class="desk-alert danger">@warning</p>}
+            @if(review.Conflicts.Count==0){<p>没有发现字段冲突，确认后将合并并更新两端。</p>}
+            @foreach(var conflict in review.Conflicts){<section class="sync-conflict"><strong>@conflict.Project</strong><h3>@conflict.Field</h3><p class="desk-muted">共同版本：@conflict.Baseline</p><p><b>电脑：</b>@conflict.Pc</p><p><b>手机：</b>@conflict.Phone</p><label>保留哪一端的内容<select @bind="_syncChoices[conflict.Id]"><option value="">请选择</option><option value="pc">保留电脑内容</option><option value="phone">保留手机内容</option></select></label></section>}
+            <label class="check"><input type="checkbox" @bind="_confirmAction"/>我已核对改动与收支记录，确认合并</label>
+            <div class="dialog-footer"><button class="primary" disabled="@(_busy||!_confirmAction||_syncChoices.Values.Any(x=>x==""))" @onclick='CommitSync'>确认合并并同步</button><button disabled="@_busy" @onclick='CloseDialog'>取消</button></div>
+        }else if(_dialog=="order"){
             <label>项目名称<input @bind="_editName" maxlength="200" autofocus/></label><div class="desk-form-grid"><label>订单编号<input @bind="_editNumber" maxlength="120"/></label><label>项目类型<select @bind="_editType">@foreach(var t in Enum.GetValues<ProjectType>()){<option value="@t">@TypeName(t)</option>}</select></label><label>接单日期<input type="date" @bind="_editReceived"/></label><label>订单金额（元）<input type="number" step="0.01" min="0" @bind="_editQuote"/></label><label>截止规则<select @bind="_editDueMode"><option value="Auto">非实物自动：接单后一天</option><option value="Manual">手动指定</option>@if(_editBase?.SourceKind==SourceKind.HistoricalImport){<option value="HistoricalUnknown">历史日期未知</option>}</select></label>@if(_editDueMode==DueDateMode.Manual){<label>约定交付日期<input type="date" @bind="_editDue"/></label>}</div>
             @if(_editType==ProjectType.PhysicalProduction&&_editDueMode==DueDateMode.Auto){<p class="orange-text">实物工期请按约定填写，选择“手动指定”并填写交付日。</p>}
             @if(_editId.HasValue&&_editBase?.ProjectType!=_editType){<label>项目类型变化后<select @bind="_typeDefaults"><option value="">请选择</option><option value="apply">应用新类型的工期与物流默认值</option><option value="keep">保留现有工期和物流</option></select></label>}
@@ -79,4 +88,6 @@
     </section></div>
 }
 @if(_receiptAnimation is not null){<div class="desk-receipt" role="status">收款已记录 <strong>＋@_receiptAnimation</strong></div>}
+
+
 

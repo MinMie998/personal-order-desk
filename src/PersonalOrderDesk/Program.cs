@@ -50,6 +50,7 @@ builder.Services.AddScoped<IClientPlatform,WebClientPlatform>();
 builder.Services.ConfigureHttpJsonOptions(o=>o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddSingleton(new ClientApiIdentity(dataPath));
 builder.Services.AddSingleton<ClientApiSessions>();
+builder.Services.AddSingleton<SyncMergePlans>();
 builder.Services.AddSingleton<IWorkspaceGateway>(p=>new LocalWorkspaceGateway(p.GetRequiredService<IServiceScopeFactory>()));
 const string appUrl = "http://127.0.0.1:5059";
 if (!Uri.TryCreate(appUrl, UriKind.Absolute, out var parsedUrl) || parsedUrl.Host is not ("127.0.0.1" or "localhost" or "::1"))
@@ -82,6 +83,7 @@ app.MapGet("/healthz", async (IServiceProvider services, CancellationToken ct) =
     finally { await db.Database.CloseConnectionAsync(); }
 });
 app.MapClientApi(dbPath,dataPath);
+app.MapSyncMerge(dbPath,dataPath);
 app.MapBlazorHub(o=>o.CloseOnAuthenticationExpiration=true);
 app.Run();
 

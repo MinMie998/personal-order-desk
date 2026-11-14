@@ -17,6 +17,8 @@ public partial class WorkbenchShell : IDisposable
     private ClientOrder? _detail;
     private string _page="overview",_detailTab="info",_search="",_statusFilter="",_moneySearch="";
     private bool _busy,_includeArchived,_dueOnly=true;
+    private SyncReview? _syncReview;
+    private Dictionary<string,string> _syncChoices=new();
     private AvailableUpdate? _update;
     private Task CheckUpdate()=>Run(async()=>{_update=await GitHubUpdates.Check(Session.IsMobile,lifetime.Token);_notice=_update is null?"当前没有更高版本的发布包。":"发现新版本，可下载并校验安装包。";});
     private Task DownloadUpdate()=>Run(async()=>{if(_update is null)return;var path=await GitHubUpdates.Download(_update,Path.Combine(Path.GetTempPath(),"PersonalOrderDesk-updates"),lifetime.Token);await Platform.OpenUpdate(path);_notice=Session.IsMobile?"校验通过，已交给系统安装器；覆盖安装保留独立账本。":"校验通过，已打开更新压缩包。先在设置中备份并退出服务，再解压到新版本目录；保留原数据目录与本机数据登记文件。";});
@@ -38,7 +40,7 @@ public partial class WorkbenchShell : IDisposable
     private IReadOnlyList<WorkItemRowDto> TodoItems=>(_state?.Sections??[]).SelectMany(x=>x.Items).DistinctBy(x=>x.Id).Take(8).ToArray();
     private static string NextAction(WorkItemRowDto row)=>row.Status==WorkStatus.Completed?(row.OutstandingCents>0?$"待收 {Money(row.OutstandingCents)}":row.FulfillmentState):row.NextStep??StatusName(row.Status);
     private bool QuoteChanged=>_editId.HasValue&&(_editQuote.HasValue?(long?)decimal.ToInt64(decimal.Round(_editQuote.Value*100,0)):null)!=_editBase?.OrderAmountCents;
-    private string DialogTitle=>_dialog switch{"order"=>_editId.HasValue?"编辑订单":_additionalSource.HasValue?"追加工作":"新增订单","receipt"=>"记收款","refund"=>"记退款","expense"=>"记支出","delete"=>"删除工作项","reverse"=>"撤销记录","status"=>"调整状态",_=>"工作台"};
+    private string DialogTitle=>_dialog switch{"sync"=>"核对双向同步","order"=>_editId.HasValue?"编辑订单":_additionalSource.HasValue?"追加工作":"新增订单","receipt"=>"记收款","refund"=>"记退款","expense"=>"记支出","delete"=>"删除工作项","reverse"=>"撤销记录","status"=>"调整状态",_=>"工作台"};
     private IReadOnlyList<WorkStatus> AllowedStatuses=>_detail?.Detail.WorkItem.Status switch{
         WorkStatus.Cancelled=>_detail.Detail.WorkItem.CancelledFromStatus==CancelledStatus.Completed?[WorkStatus.Completed]:[WorkStatus.NotStarted,WorkStatus.InProgress,WorkStatus.NeedsRework],
         WorkStatus.Completed=>[WorkStatus.InProgress,WorkStatus.NeedsRework,WorkStatus.Cancelled],
@@ -129,8 +131,10 @@ public partial class WorkbenchShell : IDisposable
     private Task UseLocal()=>Run(()=>ChangedSource(Session.UseLocal));
     private Task UseSnapshot()=>Run(()=>ChangedSource(Session.UsePcSnapshot));
     private Task ConnectPc()=>Run(async()=>{await ChangedSource(()=>Session.Connect(_serverAddress??"",_serverPassword??""));_serverPassword="";});
-    private Task SyncPc()=>Run(async()=>{await Session.SyncPc();if(Session.ReadOnly)await LoadState();_notice="电脑副本已更新，手机独立账本保留。点击“查看副本”即可离线查看。";});
+    private Task SyncPc()=>Run(async()=>{_syncReview=await Session.PreviewSync();if(_syncReview is null){if(Session.Profile.Mode==WorkspaceMode.PcSnapshot)await LoadState();_notice="两端备份已完成，电脑副本已建立。可打开副本离线修改，下次同步时合并两端改动。";}else{_syncChoices=_syncReview.Conflicts.ToDictionary(x=>x.Id,_=>"");ShowDialog("sync");}});
+    private Task CommitSync()=>Run(async()=>{if(!_confirmAction||_syncReview is null||_syncChoices.Values.Any(x=>x is not("pc" or "phone")))throw new ArgumentException("请核对全部冲突并勾选确认。");await Session.CommitSync(_syncChoices);_dialog=null;_detail=null;await LoadState();_notice="双向同步完成，两端备份和合并记录已保留；手机独立账本继续单独保存。";});
     private Task BackupLocal()=>Run(async()=>{var path=await Session.Backup();await Platform.ShareFile(path);_notice="本地备份已创建。";});
+    private Task ExportSyncBackup()=>Run(async()=>{await Platform.ShareFile(await Session.ExportSyncProtection());_notice="同步前的两端账本与记录已打包，可保存到应用外。";});
     private Task OpenAdvanced(string path)=>Run(()=>Platform.OpenWeb(path));
     private static string Money(long? cents)=>cents is null?"待补金额":$"¥{cents.Value/100m:N2}";
     private static string StatusName(WorkStatus s)=>s switch{WorkStatus.NotStarted=>"未开始",WorkStatus.InProgress=>"进行中",WorkStatus.Completed=>"已完成",WorkStatus.NeedsRework=>"需返工",_=>"已取消"};

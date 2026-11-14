@@ -20,12 +20,12 @@ jobs:
       - name: Build Windows desktop and Web server
         shell: pwsh
         run: |
-          $version=if('${{ github.ref_type }}' -eq 'tag'){'${{ github.ref_name }}'.TrimStart('v')}else{'2.0.0-preview.1'}
+          $version=if('${{ github.ref_type }}' -eq 'tag'){'${{ github.ref_name }}'.TrimStart('v')}else{'2.0.0-preview.2'}
           ./scripts/Build-Release.ps1 -Platform Windows -Version $version
       - name: Verify published server and UI startup assets
         shell: pwsh
         run: |
-          $version=if('${{ github.ref_type }}' -eq 'tag'){'${{ github.ref_name }}'.TrimStart('v')}else{'2.0.0-preview.1'}
+          $version=if('${{ github.ref_type }}' -eq 'tag'){'${{ github.ref_name }}'.TrimStart('v')}else{'2.0.0-preview.2'}
           ./scripts/Test-Package.ps1 -Package "releases/build-Windows-$version/PersonalOrderDesk"
       - uses: actions/upload-artifact@v4
         with:
@@ -52,7 +52,7 @@ jobs:
           SIGNING_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           SIGNING_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          $version=if('${{ github.ref_type }}' -eq 'tag'){'${{ github.ref_name }}'.TrimStart('v')}else{'2.0.0-preview.1'}
+          $version=if('${{ github.ref_type }}' -eq 'tag'){'${{ github.ref_name }}'.TrimStart('v')}else{'2.0.0-preview.2'}
           if($env:SIGNING_KEY){
             $key=Join-Path $env:RUNNER_TEMP 'release.keystore'
             $password=Join-Path $env:RUNNER_TEMP 'signing-password.txt'

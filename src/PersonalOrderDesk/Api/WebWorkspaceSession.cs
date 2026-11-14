@@ -11,6 +11,9 @@ public sealed class WebWorkspaceSession : IWorkspaceSession,IDisposable
     public Task UseLocal()=>Initialize();
     public Task Connect(string a,string p)=>Task.FromException(new NotSupportedException());
     public Task SyncPc()=>Task.FromException(new NotSupportedException());
+    public Task<SyncReview?> PreviewSync()=>Task.FromException<SyncReview?>(new NotSupportedException());
+    public Task CommitSync(Dictionary<string,string> choices)=>Task.FromException(new NotSupportedException());
+    public Task<string> ExportSyncProtection()=>Task.FromException<string>(new NotSupportedException());
     public Task UsePcSnapshot()=>Task.FromException(new NotSupportedException());
     public Task<string> Backup()=>Task.FromException<string>(new NotSupportedException());
     public Task RememberMethod(string? method){Profile.PaymentMethod=method;return Task.CompletedTask;}

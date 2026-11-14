@@ -103,5 +103,10 @@ public static class ClientApiEndpoints
             var bytes=await PortableSnapshot.Create(databasePath,identity.Info,migrations,Path.Combine(dataDirectory,"Temp","ClientSnapshots"),ct);
             return Results.File(bytes,"application/octet-stream","workbench.pcsnapshot");
         });
+        api.MapGet("/sync/{id:guid}/backup",async(Guid id,ClientApiIdentity identity,DeskDbContext db,CancellationToken ct)=>{
+            var path=Path.Combine(dataDirectory,"Backups",$"sync-before-{id:N}.db");
+            if(!File.Exists(path)||!File.Exists(path+".manifest.json"))throw new KeyNotFoundException("该次同步保护备份不存在。");
+            return Results.File(await PortableSnapshot.Create(path,identity.Info,(await db.Database.GetAppliedMigrationsAsync(ct)).ToArray(),Path.Combine(dataDirectory,"Temp","ClientSnapshots"),ct),"application/octet-stream","pc-before.pcsnapshot");
+        });
     }
 }

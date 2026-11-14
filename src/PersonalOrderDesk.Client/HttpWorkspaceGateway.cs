@@ -37,14 +37,18 @@ public sealed class HttpWorkspaceGateway : IWorkspaceGateway,IDisposable
     }
     private async Task<T> Get<T>(string path,CancellationToken ct){using var r=await client.GetAsync(path,ct);await Check(r,ct);return await r.Content.ReadFromJsonAsync<T>(DeskJson.Options,ct)??throw new InvalidDataException("电脑没有返回有效数据。");}
     private async Task<T> Post<T>(string path,object data,CancellationToken ct){using var r=await client.PostAsJsonAsync(path,data,DeskJson.Options,ct);await Check(r,ct);return await r.Content.ReadFromJsonAsync<T>(DeskJson.Options,ct)??throw new InvalidDataException("电脑没有返回有效数据。");}
-    public async Task<byte[]> Snapshot(CancellationToken ct=default)
+    public Task<byte[]> Snapshot(CancellationToken ct=default)=>Download("api/v1/snapshot",ct);
+    public Task<byte[]> SyncBackup(Guid operation,CancellationToken ct=default)=>Download($"api/v1/sync/{operation}/backup",ct);
+    private async Task<byte[]> Download(string path,CancellationToken ct)
     {
-        using var r=await client.GetAsync("api/v1/snapshot",HttpCompletionOption.ResponseHeadersRead,ct);await Check(r,ct);
+        using var r=await client.GetAsync(path,HttpCompletionOption.ResponseHeadersRead,ct);await Check(r,ct);
         if(r.Content.Headers.ContentLength>PortableSnapshot.MaxBytes)throw new InvalidDataException("电脑副本超过大小限制。");
         await using var stream=await r.Content.ReadAsStreamAsync(ct);using var buffer=new MemoryStream();var block=new byte[81920];int n;
         while((n=await stream.ReadAsync(block,ct))>0){if(buffer.Length+n>PortableSnapshot.MaxBytes)throw new InvalidDataException("电脑副本超过大小限制。");await buffer.WriteAsync(block.AsMemory(0,n),ct);}return buffer.ToArray();
     }
     public Task<SyncProtectionReceipt> ProtectSync(Guid operation,CancellationToken ct=default)=>Post<SyncProtectionReceipt>("api/v1/sync/backup",new SyncProtectionRequest(operation),ct);
+    public Task<SyncReview> PreviewSync(SyncMergeRequest request,CancellationToken ct=default)=>Post<SyncReview>("api/v1/sync/preview",request,ct);
+    public Task<bool> CommitSync(SyncCommitRequest request,CancellationToken ct=default)=>Post<bool>("api/v1/sync/commit",request,ct);
     public Task<WorkspaceState> State(CancellationToken ct=default)=>Get<WorkspaceState>("api/v1/state",ct);
     public Task<ClientOrder> Order(Guid id,CancellationToken ct=default)=>Get<ClientOrder>($"api/v1/orders/{id}",ct);
     public Task<WorkItemEditorDto> Editor(Guid? id=null,CancellationToken ct=default)=>Get<WorkItemEditorDto>(id.HasValue?$"api/v1/orders/{id}/editor":"api/v1/editor",ct);
