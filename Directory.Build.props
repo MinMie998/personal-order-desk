@@ -1,1 +1,1 @@
-<Project><PropertyGroup><Version Condition="'$(Version)' == ''">2.0.0-preview.2</Version></PropertyGroup></Project>
+<Project><PropertyGroup><Version Condition="'$(Version)' == ''">2.0.0-preview.3</Version></PropertyGroup></Project>

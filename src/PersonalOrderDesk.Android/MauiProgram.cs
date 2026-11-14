@@ -6,6 +6,7 @@ public static class MauiProgram
     {
         var builder=MauiApp.CreateBuilder().UseMauiApp<App>();
         builder.Services.AddMauiBlazorWebView();
+        builder.Services.AddSingleton<ClientBackNavigation>();
         builder.Services.AddSingleton<IWorkspaceSession>(new NativeWorkspaceSession(Path.Combine(FileSystem.AppDataDirectory,"workbench"),new AndroidSecretStore(),true));
         builder.Services.AddSingleton<IClientPlatform,AndroidClientPlatform>();
         return builder.Build();

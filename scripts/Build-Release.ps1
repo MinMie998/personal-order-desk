@@ -1,4 +1,4 @@
-param([ValidateSet('Windows','Android')][string]$Platform='Windows',[string]$Version='2.0.0-preview.2',[string]$Dotnet='dotnet',[string]$AndroidSdkDirectory=$env:ANDROID_HOME,[string]$JavaSdkDirectory=$env:JAVA_HOME,[string]$KeyStore,[string]$PasswordFile)
+param([ValidateSet('Windows','Android')][string]$Platform='Windows',[string]$Version='2.0.0-preview.3',[string]$Dotnet='dotnet',[string]$AndroidSdkDirectory=$env:ANDROID_HOME,[string]$JavaSdkDirectory=$env:JAVA_HOME,[string]$KeyStore,[string]$PasswordFile)
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
 Set-Location $projectRoot
@@ -15,15 +15,19 @@ if($Platform -eq 'Windows'){
     if($private){throw '发布目录混入本机数据，禁止打包。'}
     Compress-Archive -Path "$package/*" -DestinationPath (Join-Path $destination 'PersonalOrderDesk-win-x64.zip') -Force
 }else{
-    $arguments=@('publish','src/PersonalOrderDesk.Android','-c','Release',"-p:Version=$Version","-p:ApplicationDisplayVersion=$Version",'-p:AndroidPackageFormats=apk')
+    $arguments=@('publish','src/PersonalOrderDesk.Android','-c','Release',"-p:Version=$Version","-p:ApplicationDisplayVersion=$Version",'-p:AndroidPackageFormats=apk','-r','android-arm64')
     $parts=$Version.Split('-',2);$base=[Version]$parts[0];$suffix=if($parts.Length -eq 2){[int]($parts[1].Split('.')[-1])}else{999}
     $code=$base.Major*10000000+$base.Minor*100000+[Math]::Max(0,$base.Build)*1000+$suffix
     $arguments+="-p:ApplicationVersion=$code"
     if($AndroidSdkDirectory){$arguments+="-p:AndroidSdkDirectory=$AndroidSdkDirectory"};if($JavaSdkDirectory){$arguments+="-p:JavaSdkDirectory=$JavaSdkDirectory"}
     if($KeyStore){if(!(Test-Path $PasswordFile)){throw '缺少签名密码文件'};Copy-Item $PasswordFile ($PasswordFile+'.key') -Force;$arguments+=@('-p:AndroidKeyStore=true',"-p:AndroidSigningKeyStore=$KeyStore",'-p:AndroidSigningKeyAlias=personalorderdesk',"-p:AndroidSigningKeyPass=file:$PasswordFile.key","-p:AndroidSigningStorePass=file:$PasswordFile")}
     Invoke-Dotnet $arguments
-    $apk=Get-ChildItem src/PersonalOrderDesk.Android/bin/Release/net10.0-android/publish -Filter '*-Signed.apk' | Select-Object -First 1
+    $apk=Get-ChildItem src/PersonalOrderDesk.Android/bin/Release/net10.0-android/android-arm64/publish -Filter '*-Signed.apk' | Select-Object -First 1
     if(!$apk){throw '没有找到签名APK。'}
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip=[IO.Compression.ZipFile]::OpenRead($apk.FullName)
+    try { $abis=@($zip.Entries.FullName | Where-Object {$_ -match '^lib/[^/]+/'} | ForEach-Object {($_ -split '/')[1]} | Select-Object -Unique);if($abis.Count -ne 1 -or $abis[0] -ne 'arm64-v8a'){throw '手机发布包必须仅包含ARM64架构，禁止沿用旧APK。'} } finally {$zip.Dispose()}
+
     $signer=Get-ChildItem (Join-Path $AndroidSdkDirectory 'build-tools') -Directory | Sort-Object Name -Descending | ForEach-Object {Join-Path $_.FullName 'lib/apksigner.jar'} | Where-Object {Test-Path $_} | Select-Object -First 1
     if(!$signer){throw '缺少APK签名校验工具。'}
     & (Join-Path $JavaSdkDirectory 'bin/java.exe') -jar $signer verify $apk.FullName

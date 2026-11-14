@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Components.Web;
 using PersonalOrderDesk.Client;
 using PersonalOrderDesk.Domain;
@@ -11,6 +12,20 @@ public partial class WorkbenchShell : IDisposable
 {
     [Inject] public IWorkspaceSession Session {get;set;}=default!;
     [Inject] public IClientPlatform Platform {get;set;}=default!;
+    [Inject] public IServiceProvider Services {get;set;}=default!;
+    private ClientBackNavigation? nativeBack;
+    private string detailReturnPage="orders";
+    private async Task<bool> HandleNativeBack()
+    {
+        bool handled=false;
+        await InvokeAsync(()=>{
+            if(_busy){handled=true;return;}
+            if(_dialog is not null){CloseDialog();handled=true;}
+            else if(_detail is not null){BackToList();handled=true;}
+            else if(_page!="overview"){Navigate("overview");handled=true;}
+            if(handled)StateHasChanged();
+        });return handled;
+    }
     private readonly CancellationTokenSource lifetime=new();
     private readonly Dictionary<string,string> NavItems=new(){["overview"]="概览",["orders"]="工作项",["money"]="收支结算",["shipping"]="物流履约",["recycle"]="回收站",["settings"]="连接与数据"};
     private WorkspaceState? _state;
@@ -53,6 +68,7 @@ public partial class WorkbenchShell : IDisposable
         _=>[WorkStatus.InProgress,WorkStatus.Completed,WorkStatus.Cancelled]};
     protected override async Task OnInitializedAsync()
     {
+        nativeBack=Services.GetService<ClientBackNavigation>();if(nativeBack is not null)nativeBack.Handler=HandleNativeBack;
         _busy=true;
         try{await Session.Initialize();_serverAddress=Session.Profile.ServerAddress;await LoadState();}
         catch(Exception ex){_error=Explain(ex);}
@@ -71,11 +87,12 @@ public partial class WorkbenchShell : IDisposable
     private async Task LoadState()=>_state=await Session.Gateway.State(lifetime.Token);
     private Task Refresh()=>Run(LoadState);
     private void Navigate(string page){if(_busy)return;_page=page;_detail=null;_error=null;_notice=null;}
-    private void BackToList(){_detail=null;_page="orders";}
+    private void BackToList(){_detail=null;_page=detailReturnPage;}
     private void ClearSearch(){_search="";_statusFilter="";_includeArchived=false;}
     private static bool Match(string term,params string?[] fields)=>string.IsNullOrWhiteSpace(term)||fields.Any(x=>x?.Contains(term.Trim(),StringComparison.OrdinalIgnoreCase)==true);
     private async Task LoadOrder(Guid id,string tab="info")
     {
+        if(_detail is null)detailReturnPage=_page;
         _detail=await Session.Gateway.Order(id,lifetime.Token);_detailTab=tab;_page="orders";
         _progressCurrent=_detail.Detail.WorkItem.CurrentWork;_progressNext=_detail.Detail.WorkItem.NextStep;
         _carrier=_detail.Shipping?.Carrier;_tracking=_detail.Shipping?.TrackingNumber;_noTracking=_detail.Shipping?.NoTrackingNumber==true;
@@ -145,5 +162,5 @@ public partial class WorkbenchShell : IDisposable
     private static string StatusClass(WorkStatus s)=>s switch{WorkStatus.Completed=>"green",WorkStatus.InProgress=>"blue",WorkStatus.NeedsRework=>"orange",_=>"gray"};
     private static string TypeName(ProjectType t)=>t switch{ProjectType.Simulation=>"仿真",ProjectType.SchematicPcbDesign=>"原理图 / PCB",ProjectType.CodeReport=>"代码 / 报告",ProjectType.PhysicalProduction=>"实物制作",ProjectType.Other=>"其他",_=>"综合 / 未知"};
     private static string ShipName(ShipmentStatus s)=>s switch{ShipmentStatus.NotShipped=>"未寄出",ShipmentStatus.Shipped=>"已寄出",ShipmentStatus.Delivered=>"已签收",_=>"历史状态待核"};
-    public void Dispose(){lifetime.Cancel();lifetime.Dispose();}
+    public void Dispose(){if(nativeBack is not null)nativeBack.Handler=null;lifetime.Cancel();lifetime.Dispose();}
 }
