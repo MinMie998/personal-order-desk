@@ -4,3 +4,5 @@
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 .sync-conflict{border:1px solid #ead5aa;background:#fffbf2;padding:15px;border-radius:10px;margin:14px 0;overflow-wrap:anywhere}.sync-conflict h3{font-size:14px;margin:8px 0}.sync-conflict p{white-space:pre-wrap}
+
+.desk-source{position:sticky;top:0;z-index:35;background:#f5f7fa;padding:8px 0;border-bottom:1px solid #e6ebf2}.desk-source strong{overflow-wrap:anywhere}

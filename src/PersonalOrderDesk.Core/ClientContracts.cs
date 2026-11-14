@@ -14,7 +14,7 @@ public sealed record OrderMoneySummary(Guid Id, string? Number, string Name, lon
 public sealed record WorkspaceState(DateOnly Today, IReadOnlyList<WorkItemRowDto> Orders, IReadOnlyList<OrderMoneySummary> Money,
     IReadOnlyList<DeletedWorkItemDto> Recycle, IReadOnlyList<WorkSectionDto> Sections);
 public sealed record ClientOrder(WorkItemDetailDto Detail, WorkItemFinanceDto Money, ShippingDraftDto? Shipping);
-public sealed record ServerInfo(string ProductId, int ApiVersion, string InstanceId, string Name, string Schema);
+public sealed record ServerInfo(string ProductId, int ApiVersion, string InstanceId, string Name, string Schema,string? AppVersion=null,string? LocalDataDirectory=null);
 public sealed record SessionRequest(string Password);
 public sealed record SessionResponse(string Token, DateTimeOffset ExpiresAt, ServerInfo Server);
 public sealed record VersionRequest(long ExpectedVersion);

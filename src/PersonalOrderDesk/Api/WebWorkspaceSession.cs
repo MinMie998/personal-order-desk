@@ -16,11 +16,15 @@ public sealed class WebWorkspaceSession : IWorkspaceSession,IDisposable
     public Task<string> ExportSyncProtection()=>Task.FromException<string>(new NotSupportedException());
     public Task UsePcSnapshot()=>Task.FromException(new NotSupportedException());
     public Task<string> Backup()=>Task.FromException<string>(new NotSupportedException());
+    public Task<MobileRestoreReview> PreviewRestore(string archive)=>Task.FromException<MobileRestoreReview>(new NotSupportedException());
+    public Task RestoreBackup(Guid previewId)=>Task.FromException(new NotSupportedException());
+    public Task<string> ExportRestoreProtection()=>Task.FromException<string>(new NotSupportedException());
     public Task RememberMethod(string? method){Profile.PaymentMethod=method;return Task.CompletedTask;}
     public void Dispose()=>gateway?.Dispose();
 }
 public sealed class WebClientPlatform(IJSRuntime js,NavigationManager navigation) : IClientPlatform
 {
+    public Task<string?> PickBackupFile()=>Task.FromException<string?>(new NotSupportedException());
     public Task OpenUpdate(string path)=>Task.FromException(new NotSupportedException("请在Windows程序中下载更新。"));
     public async Task CopyText(string text)=>await js.InvokeVoidAsync("desk.copy",text);
     public Task OpenWeb(string path){navigation.NavigateTo("/"+path.TrimStart('/'),true);return Task.CompletedTask;}

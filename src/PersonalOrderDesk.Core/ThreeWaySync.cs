@@ -11,7 +11,7 @@ using PersonalOrderDesk.Services;
 namespace PersonalOrderDesk.Client;
 
 public sealed record SyncTable(string[] Columns,Dictionary<string,Dictionary<string,string?>> Rows);
-public sealed record SyncData(Dictionary<string,SyncTable> Tables);
+public sealed record SyncData(Dictionary<string,SyncTable> Tables,string? ConfigurationFingerprint=null);
 public sealed record SyncConflict(string Id,string Project,string Field,string Baseline,string Pc,string Phone);
 public sealed record SyncReview(Guid OperationId,string PcFingerprint,int PcChanges,int PhoneChanges,IReadOnlyList<SyncConflict> Conflicts,IReadOnlyList<string> Warnings);
 public sealed record SyncMergeRequest(Guid OperationId,string InstanceId,SyncData Baseline,SyncData Phone);
@@ -41,12 +41,15 @@ public static class ThreeWaySync
                 var row=new Dictionary<string,string?>();for(int i=0;i<columns.Length;i++)row[columns[i]]=reader.IsDBNull(i)?null:Convert.ToString(reader.GetValue(i),CultureInfo.InvariantCulture);
                 rows.Add(row["Id"]??throw new InvalidDataException("记录编号缺失。"),row);
             }tables.Add(name,new(columns,rows));
-        }return new(tables);
+        }
+        await using var settings=connection.CreateCommand();settings.Transaction=transaction;settings.CommandText="SELECT Key,Value,UpdatedAt FROM Settings ORDER BY Key";
+        var configuration=new List<string?>();await using(var reader=await settings.ExecuteReaderAsync(ct))while(await reader.ReadAsync(ct))for(int i=0;i<3;i++)configuration.Add(reader.IsDBNull(i)?null:reader.GetString(i));
+        return new(tables,Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(configuration))));
     }
     public static string Fingerprint(SyncData data)
     {
-        var stable=Tables.Where(x=>x!="ActivityLogs").Select(t=>new{Table=t,Rows=data.Tables[t].Rows.OrderBy(x=>x.Key).Select(r=>r.Value.OrderBy(x=>x.Key))});
-        return Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(stable,DeskJson.Options)));
+        var stable=Tables.Where(x=>x!="ActivityLogs").Select(t=>new{Table=t,Rows=data.Tables[t].Rows.OrderBy(x=>x.Key,StringComparer.Ordinal).Select(r=>r.Value.OrderBy(x=>x.Key,StringComparer.Ordinal))});
+        return Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new{data.ConfigurationFingerprint,Tables=stable},DeskJson.Options)));
     }
     private static bool Equal(Dictionary<string,string?>? a,Dictionary<string,string?>? b,IEnumerable<string>? columns=null)
     {
@@ -54,8 +57,9 @@ public static class ThreeWaySync
         return (columns??a.Keys.Where(x=>!VolatileFields.Contains(x))).All(c=>a.GetValueOrDefault(c)==b.GetValueOrDefault(c));
     }
     private static Dictionary<string,string?> Clone(Dictionary<string,string?> row)=>new(row);
-    private static string Value(Dictionary<string,string?>? row,string field)=>row is null?"记录不存在":field=="_status"?DisplayValue(row.GetValueOrDefault("WorkStatus"))??"未填写":field=="_record"?RecordSummary(row):field=="OrderAmountCents"&&long.TryParse(row.GetValueOrDefault(field),out var amount)?$"¥{amount/100m:0.00}":DisplayValue(row.GetValueOrDefault(field))??"未填写";
-    private static string RecordSummary(Dictionary<string,string?> row)=>string.Join(" · ",new[]{"ProjectName","IsDeleted","WorkStatus","CurrentWork","NextStep","OrderAmountCents","ShipmentStatus","Type","AmountCents","Status","Carrier","TrackingNumber","ShippedDate","DeliveredDate","Notes"}.Where(row.ContainsKey).Select(k=>k is "AmountCents" or "OrderAmountCents"&&long.TryParse(row[k],out var cents)?$"¥{cents/100m:0.00}":k=="IsDeleted"?(row[k]=="1"?"已移入回收站":"正常保留"):DisplayValue(row[k])).Where(x=>!string.IsNullOrWhiteSpace(x)));
+    private static string Value(Dictionary<string,string?>? row,string field)=>row is null?"记录不存在":field=="_status"?StatusSummary(row):field=="_record"?RecordSummary(row):field=="OrderAmountCents"&&long.TryParse(row.GetValueOrDefault(field),out var amount)?$"¥{amount/100m:0.00}":field is "IsArchived" or "IsDeleted"?(row.GetValueOrDefault(field)=="1"?"是":"否"):DisplayValue(row.GetValueOrDefault(field))??"未填写";
+    private static string StatusSummary(Dictionary<string,string?> row)=>$"{DisplayValue(row.GetValueOrDefault("WorkStatus"))}；完成日期：{row.GetValueOrDefault("CompletedDate")??"未记录"}；日期情况：{row.GetValueOrDefault("CompletedDateKnowledge") switch{"Known"=>"已确认","Unknown"=>"历史未知",_=>"不适用"}}；完成时刻：{row.GetValueOrDefault("CompletedAt")??"未记录"}";
+    private static string RecordSummary(Dictionary<string,string?> row)=>string.Join(" · ",new[]{"ProjectName","IsDeleted","WorkStatus","CurrentWork","NextStep","OrderAmountCents","ShipmentStatus","Type","AmountCents","Status","Carrier","TrackingNumber","ShippedDate","DeliveredDate","TransactionDate","PaymentMethod","ReversalReason","Notes"}.Where(row.ContainsKey).Select(k=>k is "AmountCents" or "OrderAmountCents"&&long.TryParse(row[k],out var cents)?$"¥{cents/100m:0.00}":k=="IsDeleted"?(row[k]=="1"?"已移入回收站":"正常保留"):DisplayValue(row[k])).Where(x=>!string.IsNullOrWhiteSpace(x)));
     private static string? DisplayValue(string? value)=>value switch{"NotStarted"=>"未开始","InProgress"=>"进行中","Completed"=>"已完成","NeedsRework"=>"需返工","Cancelled"=>"已取消","NotShipped"=>"未寄出","Shipped"=>"已寄出","Delivered"=>"已签收","Receipt"=>"收款","Refund"=>"退款","Active"=>"有效","Reversed"=>"已撤销",_=>value};
     private static bool RelatedChanged(SyncData baseline,SyncData changed,string id)
     {
@@ -113,12 +117,13 @@ public static class ThreeWaySync
             }result[table]=new(computer.Columns,rows);
         }
         var newPc=pc.Tables["PaymentTransactions"].Rows.Where(x=>!baseline.Tables["PaymentTransactions"].Rows.ContainsKey(x.Key)).Select(x=>x.Value).ToArray();
+        string Allocations(SyncData data,string transaction)=>string.Join('|',data.Tables["PaymentAllocations"].Rows.Values.Where(a=>a["PaymentTransactionId"]==transaction).OrderBy(a=>a["WorkItemId"],StringComparer.Ordinal).Select(a=>a["WorkItemId"]+":"+a["AmountCents"]));
         foreach(var mobile in phone.Tables["PaymentTransactions"].Rows.Where(x=>!baseline.Tables["PaymentTransactions"].Rows.ContainsKey(x.Key)&&!pc.Tables["PaymentTransactions"].Rows.ContainsKey(x.Key)).Select(x=>x.Value)){
-            if(newPc.Any(p=>new[]{"Type","AmountCents","TransactionDate","PaymentMethod"}.All(c=>p[c]==mobile[c])))warnings.Add("两端有金额、日期和方式相同的新收退款，请核对是否重复登记。需要撤销重复记录时，先取消同步处理后重试。");
+            if(newPc.Any(p=>new[]{"Type","AmountCents","TransactionDate","PaymentMethod"}.All(c=>p[c]==mobile[c])&&Allocations(pc,p["Id"]!)==Allocations(phone,mobile["Id"]!)))warnings.Add("同一订单在两端有金额、日期和方式相同的新收退款，请核对是否重复登记。需要撤销重复记录时，先取消同步处理后重试。");
         }
-        return new(new(result),conflicts,pcChanges,phoneChanges,warnings.Distinct().ToArray());
+        return new(new(result,pc.ConfigurationFingerprint),conflicts,pcChanges,phoneChanges,warnings.Distinct().ToArray());
     }
-    public static async Task Apply(string database,string expectedFingerprint,SyncData proposed,DateOnly today,CancellationToken ct=default)
+    public static async Task Apply(string database,string expectedFingerprint,SyncData proposed,DateOnly today,CancellationToken ct=default,Guid? operation=null,string? choicesHash=null)
     {
         await using var connection=new SqliteConnection(new SqliteConnectionStringBuilder{DataSource=database,Mode=SqliteOpenMode.ReadWrite,ForeignKeys=true,Pooling=false}.ToString());await connection.OpenAsync(ct);
         await using var transaction=connection.BeginTransaction(deferred:false);
@@ -133,7 +138,19 @@ public static class ThreeWaySync
             }
         }
         await ValidateGraph(connection,transaction,today,ct);
+        if(operation is {} syncId){
+            await using var receipt=connection.CreateCommand();receipt.Transaction=transaction;
+            receipt.CommandText="CREATE TABLE IF NOT EXISTS __DeskSyncResults (OperationId TEXT PRIMARY KEY, ChoicesHash TEXT NOT NULL); INSERT INTO __DeskSyncResults(OperationId,ChoicesHash) VALUES(@id,@hash)";
+            receipt.Parameters.AddWithValue("@id",syncId.ToString("N"));receipt.Parameters.AddWithValue("@hash",choicesHash??"");await receipt.ExecuteNonQueryAsync(ct);
+        }
         await transaction.CommitAsync(ct);
+    }
+    public static async Task<string?> AppliedSync(string database,Guid operation,CancellationToken ct=default)
+    {
+        await using var connection=new SqliteConnection(new SqliteConnectionStringBuilder{DataSource=database,Mode=SqliteOpenMode.ReadOnly,Pooling=false}.ToString());await connection.OpenAsync(ct);
+        await using var command=connection.CreateCommand();command.CommandText="SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='__DeskSyncResults'";
+        if(Convert.ToInt64(await command.ExecuteScalarAsync(ct))==0)return null;
+        command.CommandText="SELECT ChoicesHash FROM __DeskSyncResults WHERE OperationId=@id";command.Parameters.AddWithValue("@id",operation.ToString("N"));return await command.ExecuteScalarAsync(ct) as string;
     }
     private static async Task ValidateGraph(SqliteConnection connection,SqliteTransaction transaction,DateOnly today,CancellationToken ct)
     {
@@ -156,4 +173,5 @@ public static class ThreeWaySync
         await using var check=connection.CreateCommand();check.Transaction=transaction;check.CommandText="PRAGMA foreign_key_check";await using var reader=await check.ExecuteReaderAsync(ct);if(await reader.ReadAsync(ct))throw new InvalidDataException("合并后关联记录不完整，本次尚未写入。");
     }
 }
+
 

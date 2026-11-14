@@ -9,7 +9,7 @@ public sealed record AvailableUpdate(string Version,string Notes,string Page,str
 public static class GitHubUpdates
 {
     public const string Repository="MinMie998/personal-order-desk";
-    public static string CurrentVersion=>typeof(GitHubUpdates).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]??"2.0.0-preview.1";
+    public static string CurrentVersion=>typeof(GitHubUpdates).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]??"2.0.0-preview.2";
     private sealed record Asset(string Name,[property:JsonPropertyName("browser_download_url")]string Url,string? Digest);
     private sealed record Release([property:JsonPropertyName("tag_name")]string Tag,bool Draft,bool Prerelease,string? Body,[property:JsonPropertyName("html_url")]string Page,Asset[] Assets);
     private static HttpClient Client()

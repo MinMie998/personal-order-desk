@@ -1,4 +1,4 @@
-param([string]$Package='releases/build-Windows-2.0.0-preview.1/PersonalOrderDesk')
+param([string]$Package='releases/build-Windows-2.0.0-preview.2/PersonalOrderDesk')
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
 Set-Location $projectRoot

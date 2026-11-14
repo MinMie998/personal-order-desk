@@ -13,7 +13,7 @@ public static class BackendSupervisor
     public static async Task<IWorkspaceGateway> Connect(string clientRoot)
     {
         using var http=new HttpClient {BaseAddress=Address,Timeout=TimeSpan.FromMilliseconds(900)};
-        try {var info=await http.GetFromJsonAsync<ServerInfo>("api/v1/info",DeskJson.Options);if(info?.ProductId=="PersonalOrderDesk"){var session=await HttpWorkspaceGateway.Login(Address,"");return new HttpWorkspaceGateway(Address,session.Token);}}
+        try {var info=await http.GetFromJsonAsync<ServerInfo>("api/v1/info",DeskJson.Options);if(info?.ProductId=="PersonalOrderDesk"){VerifyRunningBook(clientRoot,info);var session=await HttpWorkspaceGateway.Login(Address,"");return new HttpWorkspaceGateway(Address,session.Token);}}
         catch(HttpRequestException){}catch(TaskCanceledException){}catch(System.Text.Json.JsonException){}
         try {using var socket=new TcpClient();await socket.ConnectAsync("127.0.0.1",5059);throw new InvalidOperationException("5059端口正在使用。若是旧版工作台，请先在旧版设置页退出应用，再重开新版；程序不会结束其他服务。");}catch(SocketException){}
         var server=System.IO.Path.Combine(AppContext.BaseDirectory,"server","PersonalOrderDesk.exe");
@@ -28,7 +28,7 @@ public static class BackendSupervisor
         if(!process.Start())throw new InvalidOperationException("电脑服务无法启动。");process.BeginOutputReadLine();process.BeginErrorReadLine();
         for(var attempt=0;attempt<120;attempt++){
             if(process.HasExited)throw new InvalidOperationException("电脑服务启动失败，请查看客户端logs中的service-start.log；现有数据库没有被新建空库替换。");
-            try{var info=await http.GetFromJsonAsync<ServerInfo>("api/v1/info",DeskJson.Options);if(info?.ProductId=="PersonalOrderDesk"){StorageLocationGuard.RememberInitialized(dataDirectory,System.IO.Path.Combine(clientRoot,"storage-location.json"));var session=await HttpWorkspaceGateway.Login(Address,"");return new HttpWorkspaceGateway(Address,session.Token);}}catch(HttpRequestException){}catch(TaskCanceledException){}
+            try{var info=await http.GetFromJsonAsync<ServerInfo>("api/v1/info",DeskJson.Options);if(info?.ProductId=="PersonalOrderDesk"){VerifyRunningBook(clientRoot,info,dataDirectory);StorageLocationGuard.RememberInitialized(dataDirectory,System.IO.Path.Combine(clientRoot,"storage-location.json"));var session=await HttpWorkspaceGateway.Login(Address,"");return new HttpWorkspaceGateway(Address,session.Token);}}catch(HttpRequestException){}catch(TaskCanceledException){}
             await Task.Delay(400);
         }
         throw new InvalidOperationException("电脑服务启动较慢，请稍后重新打开本机工作台。");
@@ -54,5 +54,22 @@ public static class BackendSupervisor
         StorageLocationGuard.Validate(directory,System.IO.Path.Combine(directory,"storage-location.json"));
         if(System.IO.File.Exists(registration))StorageLocationGuard.Validate(directory,registration);
         return directory;
+    }
+    private static void VerifyRunningBook(string clientRoot,ServerInfo info,string? selectedDirectory=null)
+    {
+        string? expected=selectedDirectory??Environment.GetEnvironmentVariable("PERSONAL_ORDER_DESK_DATA_DIR");
+        var install=System.IO.Path.Combine(AppContext.BaseDirectory,"server");
+        if(expected is null&&System.IO.File.Exists(System.IO.Path.Combine(clientRoot,"storage-location.json")))expected=StorageLocationGuard.ResolveDataDirectory(null,clientRoot,"");
+        if(expected is null&&System.IO.File.Exists(System.IO.Path.Combine(install,"storage-location.json")))expected=StorageLocationGuard.ResolveDataDirectory(null,install,"");
+        if(expected is null&&System.IO.File.Exists(System.IO.Path.Combine(clientRoot,"storage-choice.json")))expected=JsonSerializer.Deserialize<string>(System.IO.File.ReadAllText(System.IO.Path.Combine(clientRoot,"storage-choice.json")));
+        string? expectedId=null;
+        if(expected is not null){
+            StorageLocationGuard.Validate(expected,System.IO.Path.Combine(expected,"storage-location.json"));
+            var identity=System.IO.Path.Combine(expected,"workstation-id.json");
+            if(System.IO.File.Exists(identity))expectedId=JsonSerializer.Deserialize<string>(System.IO.File.ReadAllText(identity));
+            if(info.LocalDataDirectory is null||!string.Equals(System.IO.Path.GetFullPath(expected).TrimEnd('\\','/'),System.IO.Path.GetFullPath(info.LocalDataDirectory).TrimEnd('\\','/'),StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("正在运行的后台数据目录与所选账本不同，请先退出该后台。没有切换或新建账本。");
+        }
+        BackendCompatibility.Validate(info,BackendCompatibility.CurrentVersion,expectedId);
+        if(info.LocalDataDirectory is {} actual){StorageLocationGuard.Validate(actual,System.IO.Path.Combine(actual,"storage-location.json"));StorageLocationGuard.RememberInitialized(actual,System.IO.Path.Combine(clientRoot,"storage-location.json"));}
     }
 }

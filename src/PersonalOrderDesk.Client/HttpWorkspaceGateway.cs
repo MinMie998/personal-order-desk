@@ -25,6 +25,13 @@ public sealed class HttpWorkspaceGateway : IWorkspaceGateway,IDisposable
     public static async Task<SessionResponse> Login(Uri address,string password,CancellationToken ct=default)
     {
         using var client=new HttpClient(new HttpClientHandler{AllowAutoRedirect=false}){BaseAddress=address,Timeout=TimeSpan.FromSeconds(12)};
+        using(var probe=await client.GetAsync("api/v1/info",ct)){
+            if(probe.StatusCode==HttpStatusCode.NotFound)throw new InvalidOperationException("电脑正在运行不支持App连接的旧后台。请先在电脑退出旧版工作台，再启动配套的新版本；原账本无需重新建立。");
+            await Check(probe,ct);
+            var info=await probe.Content.ReadFromJsonAsync<ServerInfo>(DeskJson.Options,ct);
+            if(info?.ProductId!="PersonalOrderDesk"||info.ApiVersion!=1)throw new InvalidOperationException("该电脑后台与当前App不兼容，请更新电脑工作台。");
+            BackendCompatibility.Validate(info,BackendCompatibility.CurrentVersion);
+        }
         using var response=await client.PostAsJsonAsync("api/v1/session",new SessionRequest(password),DeskJson.Options,ct);
         await Check(response,ct);var result=await response.Content.ReadFromJsonAsync<SessionResponse>(DeskJson.Options,ct)??throw new InvalidDataException("电脑返回的连接信息无效。");
         if(result.Server.ProductId!="PersonalOrderDesk"||result.Server.ApiVersion!=1||!Guid.TryParse(result.Server.InstanceId,out _))throw new InvalidDataException("该地址不是兼容的个人接单工作台。");return result;
@@ -32,6 +39,7 @@ public sealed class HttpWorkspaceGateway : IWorkspaceGateway,IDisposable
     private static async Task Check(HttpResponseMessage response,CancellationToken ct)
     {
         if(response.IsSuccessStatusCode)return;
+        if((int)response.StatusCode is >=300 and <400)throw new InvalidOperationException("电脑把App请求跳转到了网页登录，通常是旧后台仍在运行。请在电脑退出旧版并启动配套版本，保留原账本。");
         ClientApiError? error=null;try{error=await response.Content.ReadFromJsonAsync<ClientApiError>(DeskJson.Options,ct);}catch(System.Text.Json.JsonException){}
         throw new InvalidOperationException(error?.Message??(response.StatusCode==HttpStatusCode.NotFound?"电脑服务版本不兼容，或记录不存在。":"电脑暂时无法完成操作，请稍后重试。"));
     }
@@ -49,6 +57,7 @@ public sealed class HttpWorkspaceGateway : IWorkspaceGateway,IDisposable
     public Task<SyncProtectionReceipt> ProtectSync(Guid operation,CancellationToken ct=default)=>Post<SyncProtectionReceipt>("api/v1/sync/backup",new SyncProtectionRequest(operation),ct);
     public Task<SyncReview> PreviewSync(SyncMergeRequest request,CancellationToken ct=default)=>Post<SyncReview>("api/v1/sync/preview",request,ct);
     public Task<bool> CommitSync(SyncCommitRequest request,CancellationToken ct=default)=>Post<bool>("api/v1/sync/commit",request,ct);
+    public Task<bool> SyncApplied(Guid operation,CancellationToken ct=default)=>Get<bool>($"api/v1/sync/{operation}/status",ct);
     public Task<WorkspaceState> State(CancellationToken ct=default)=>Get<WorkspaceState>("api/v1/state",ct);
     public Task<ClientOrder> Order(Guid id,CancellationToken ct=default)=>Get<ClientOrder>($"api/v1/orders/{id}",ct);
     public Task<WorkItemEditorDto> Editor(Guid? id=null,CancellationToken ct=default)=>Get<WorkItemEditorDto>(id.HasValue?$"api/v1/orders/{id}/editor":"api/v1/editor",ct);

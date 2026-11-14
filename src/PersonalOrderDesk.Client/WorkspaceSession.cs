@@ -20,6 +20,8 @@ public sealed class ClientProfile
     public string? PaymentMethod {get;set;}
     public string? LastSyncProtection {get;set;}
     public string? LastSyncFolder {get;set;}
+    public bool OfflineEditingEnabled {get;set;}
+    public string? LastRestoreFolder {get;set;}
 }
 public interface IClientSecretStore
 {
@@ -32,6 +34,7 @@ public interface IClientPlatform
     Task OpenWeb(string relativePath);
     Task ShareFile(string path);
     Task OpenUpdate(string path);
+    Task<string?> PickBackupFile();
 }
 public interface IWorkspaceSession
 {
@@ -48,11 +51,14 @@ public interface IWorkspaceSession
     Task<SyncReview?> PreviewSync();
     Task CommitSync(Dictionary<string,string> choices);
     Task<string> ExportSyncProtection();
+    Task<MobileRestoreReview> PreviewRestore(string archive);
+    Task RestoreBackup(Guid previewId);
+    Task<string> ExportRestoreProtection();
     Task UsePcSnapshot();
     Task<string> Backup();
     Task RememberMethod(string? method);
 }
-public sealed class NativeWorkspaceSession : IWorkspaceSession,IAsyncDisposable
+public sealed partial class NativeWorkspaceSession : IWorkspaceSession,IAsyncDisposable
 {
     private readonly string root;
     private readonly IClientSecretStore secrets;
@@ -74,6 +80,7 @@ public sealed class NativeWorkspaceSession : IWorkspaceSession,IAsyncDisposable
     public async Task Initialize()
     {
         Directory.CreateDirectory(root);
+        await ResumeRestore();
         if(File.Exists(ProfilePath))Profile=JsonSerializer.Deserialize<ClientProfile>(await File.ReadAllTextAsync(ProfilePath),DeskJson.Options)??throw new InvalidDataException("数据来源设置损坏，请保留数据后检查配置。");
         if(Profile.Mode==WorkspaceMode.PcSnapshot)await UsePcSnapshot();
         else if(Profile.Mode==WorkspaceMode.Remote) {remote=await Remote();current=remote;}
@@ -117,15 +124,18 @@ public sealed class NativeWorkspaceSession : IWorkspaceSession,IAsyncDisposable
     }
     public async Task SyncPc()
     {
+        if(Profile.OfflineEditingEnabled&&!HasBaseline())throw new InvalidOperationException("共同版本文件缺失，已保留手机副本；请从同步保护包恢复共同版本后再同步，未覆盖手机内容。");
         if(HasBaseline()&&File.Exists(CopyPath())&&ThreeWaySync.Fingerprint(await ThreeWaySync.Read(BaselinePath()))!=ThreeWaySync.Fingerprint(await ThreeWaySync.Read(CopyPath())))throw new InvalidOperationException("手机副本有未同步改动，请使用双向同步预览，不能直接覆盖。");
         using var connection=await Remote();
         var operation=Guid.NewGuid();var protection=Path.Combine(root,"backups","sync-"+DateTime.UtcNow.ToString("yyyyMMddHHmmssfff")+"-"+operation.ToString("N"));Directory.CreateDirectory(protection);
         var log=Path.Combine(protection,"sync-history.json");
+        await WriteBackupMetadata(protection,operation);
         var prior=Guid.TryParse(Profile.SnapshotInstance,out _)?Path.Combine(SnapshotFolder(Profile.SnapshotInstance),"app.db"):null;
         SyncProtectionReceipt? pcBackup=null;
         try {
             if(File.Exists(LocalPath))await BackupFile(LocalPath,Path.Combine(protection,"phone-independent.db"));
             if(prior is not null&&File.Exists(prior))await BackupFile(prior,Path.Combine(protection,"previous-pc-copy.db"));
+            if(HasBaseline())await BackupFile(BaselinePath(),Path.Combine(protection,"common-baseline.db"));
             await File.WriteAllTextAsync(log,JsonSerializer.Serialize(new{Operation=operation,Status="phone-protected",Pc=Profile.ServerInstance,CreatedAt=DateTimeOffset.UtcNow},DeskJson.Options));
             pcBackup=await connection.ProtectSync(operation);
             if(pcBackup.OperationId!=operation)throw new InvalidDataException("电脑备份编号不一致，同步已停止。");
@@ -135,6 +145,7 @@ public sealed class NativeWorkspaceSession : IWorkspaceSession,IAsyncDisposable
         var known=KnownMigrations();
         using var stream=new MemoryStream(bytes);var manifest=await PortableSnapshot.ValidateAndWrite(stream,target,Profile.ServerInstance!,known);
         SaveBaseline(target,Path.Combine(folder,"baseline.db"));
+        Profile.OfflineEditingEnabled=true;
         Profile.SnapshotInstance=manifest.InstanceId;Profile.SnapshotName=manifest.Name;Profile.SnapshotAt=manifest.CreatedAt;await SaveProfile();
             Profile.LastSyncFolder=protection;Profile.LastSyncProtection=$"{operation:N} · PC：{pcBackup.BackupFile} · 手机：{protection}";await SaveProfile();
             await File.WriteAllTextAsync(log,JsonSerializer.Serialize(new{Operation=operation,Status="completed",Pc=Profile.ServerInstance,PcBackup=pcBackup,CompletedAt=DateTimeOffset.UtcNow},DeskJson.Options));
@@ -147,7 +158,7 @@ public sealed class NativeWorkspaceSession : IWorkspaceSession,IAsyncDisposable
         if(!File.Exists(path))throw new InvalidOperationException("还没有电脑副本，请连接电脑后点击“一键同步PC副本”。");
         var provider=new ServiceCollection().AddLocalWorkspace(path,!File.Exists(Path.Combine(SnapshotFolder(Profile.SnapshotInstance),"baseline.db"))).BuildServiceProvider();
         await provider.GetRequiredService<IWorkspaceGateway>().State();
-        await DisposeDatabase();database=provider;current=provider.GetRequiredService<IWorkspaceGateway>();Profile.Mode=WorkspaceMode.PcSnapshot;await SaveProfile();
+        await DisposeDatabase();database=provider;current=provider.GetRequiredService<IWorkspaceGateway>();Profile.Mode=WorkspaceMode.PcSnapshot;if(HasBaseline())Profile.OfflineEditingEnabled=true;await SaveProfile();
     }
     private bool HasBaseline()=>Guid.TryParse(Profile.SnapshotInstance,out _)&&File.Exists(BaselinePath());
     private string CopyPath()=>Path.Combine(SnapshotFolder(Profile.SnapshotInstance),"app.db");
@@ -155,13 +166,16 @@ public sealed class NativeWorkspaceSession : IWorkspaceSession,IAsyncDisposable
     private static void SaveBaseline(string source,string target){var temporary=target+".new";File.Copy(source,temporary,true);File.Move(temporary,target,true);}
     public async Task<SyncReview?> PreviewSync()
     {
+        if(await ResumePendingSync())return null;
         pendingSync=null;
+        if(Profile.OfflineEditingEnabled&&!HasBaseline())throw new InvalidOperationException("共同版本文件缺失，手机副本未覆盖，请保留当前账本并检查同步保护备份。");
         if(!HasBaseline()||Profile.SnapshotInstance!=Profile.ServerInstance){
             if(HasBaseline()&&ThreeWaySync.Fingerprint(await ThreeWaySync.Read(BaselinePath()))!=ThreeWaySync.Fingerprint(await ThreeWaySync.Read(CopyPath())))throw new InvalidOperationException("旧电脑副本还有未合并改动。请先连接原电脑同步，或保留备份后再切换电脑。");
             await SyncPc();return null;
         }
         using var connection=await Remote();var operation=Guid.NewGuid();
         var folder=Path.Combine(root,"backups","sync-"+DateTime.UtcNow.ToString("yyyyMMddHHmmssfff")+"-"+operation.ToString("N"));Directory.CreateDirectory(folder);
+        await WriteBackupMetadata(folder,operation);
         if(File.Exists(LocalPath))await BackupFile(LocalPath,Path.Combine(folder,"phone-independent.db"));
         await BackupFile(CopyPath(),Path.Combine(folder,"phone-pc-copy.db"));await BackupFile(BaselinePath(),Path.Combine(folder,"common-baseline.db"));
         var phone=await ThreeWaySync.Read(CopyPath());var fingerprint=ThreeWaySync.Fingerprint(phone);
@@ -177,13 +191,41 @@ public sealed class NativeWorkspaceSession : IWorkspaceSession,IAsyncDisposable
     {
         var plan=pendingSync??throw new InvalidOperationException("请先完成同步预览。");
         if(ThreeWaySync.Fingerprint(await ThreeWaySync.Read(CopyPath()))!=plan.PhoneFingerprint)throw new InvalidOperationException("预览后手机副本又有改动，请重新预览。");
+        var intent=new PendingSync(plan.Review.OperationId,choices,plan.PhoneFingerprint,plan.Folder,Profile.ServerInstance!);
+        await File.WriteAllTextAsync(PendingSyncPath,JsonSerializer.Serialize(intent,DeskJson.Options));
         using var connection=await Remote();await connection.CommitSync(new(plan.Review.OperationId,choices,true));
         await File.WriteAllTextAsync(Path.Combine(plan.Folder,"sync-history.json"),JsonSerializer.Serialize(new{Operation=plan.Review.OperationId,Status="pc-merged-phone-refresh-pending",Choices=choices,At=DateTimeOffset.UtcNow},DeskJson.Options));
-        var bytes=await connection.Snapshot();var target=CopyPath();
-        using var stream=new MemoryStream(bytes);var manifest=await PortableSnapshot.ValidateAndWrite(stream,target,Profile.ServerInstance!,KnownMigrations());
-        SaveBaseline(target,BaselinePath());Profile.SnapshotAt=manifest.CreatedAt;await SaveProfile();
+        var bytes=await connection.Snapshot();await InstallMergedSnapshot(bytes);
+        File.Delete(PendingSyncPath);
         await File.WriteAllTextAsync(Path.Combine(plan.Folder,"sync-history.json"),JsonSerializer.Serialize(new{Operation=plan.Review.OperationId,Status="completed",Choices=choices,At=DateTimeOffset.UtcNow},DeskJson.Options));
-        pendingSync=null;if(Profile.Mode==WorkspaceMode.PcSnapshot)await UsePcSnapshot();
+        pendingSync=null;
+    }
+    private async Task InstallMergedSnapshot(byte[] bytes)
+    {
+        var folder=Path.Combine(root,"tmp","sync-install-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(folder);var target=Path.Combine(folder,"app.db");
+        using var stream=new MemoryStream(bytes);var manifest=await PortableSnapshot.ValidateAndWrite(stream,target,Profile.ServerInstance!,KnownMigrations());
+        SaveBaseline(target,Path.Combine(folder,"baseline.db"));
+        var protection=Path.Combine(root,"backups","sync-refresh-before-"+Guid.NewGuid().ToString("N"));await WriteBackupMetadata(protection,Guid.NewGuid());
+        await BackupFile(CopyPath(),Path.Combine(protection,"phone-pc-copy.db"));await BackupFile(BaselinePath(),Path.Combine(protection,"common-baseline.db"));
+        var next=JsonSerializer.Deserialize<ClientProfile>(JsonSerializer.Serialize(Profile,DeskJson.Options),DeskJson.Options)!;
+        next.SnapshotAt=manifest.CreatedAt;next.OfflineEditingEnabled=true;
+        var intent=new RestoreIntent(folder,SnapshotFolder(Profile.SnapshotInstance),Path.Combine(protection,"previous-files"),next);
+        await File.WriteAllTextAsync(RestoreIntentPath,JsonSerializer.Serialize(intent,DeskJson.Options));await DisposeDatabase();current=null;await ResumeRestore();
+        if(Profile.Mode==WorkspaceMode.PcSnapshot)await UsePcSnapshot();else current=remote;
+    }
+    private sealed record PendingSync(Guid Operation,Dictionary<string,string> Choices,string PhoneFingerprint,string Folder,string Instance);
+    private string PendingSyncPath=>Path.Combine(root,"pending-sync.json");
+    private async Task<bool> ResumePendingSync()
+    {
+        if(!File.Exists(PendingSyncPath))return false;
+        var intent=JsonSerializer.Deserialize<PendingSync>(await File.ReadAllTextAsync(PendingSyncPath),DeskJson.Options)??throw new InvalidDataException("未完成同步记录损坏，请保留两端备份。");
+        if(intent.Instance!=Profile.ServerInstance||intent.Instance!=Profile.SnapshotInstance)throw new InvalidOperationException("存在未完成的同步，请先连接原电脑完成，未覆盖手机副本。");
+        using var connection=await Remote();
+        if(!await connection.SyncApplied(intent.Operation)){File.Delete(PendingSyncPath);return false;}
+        if(ThreeWaySync.Fingerprint(await ThreeWaySync.Read(CopyPath()))!=intent.PhoneFingerprint){if(HasBaseline()&&ThreeWaySync.Fingerprint(await ThreeWaySync.Read(CopyPath()))==ThreeWaySync.Fingerprint(await ThreeWaySync.Read(BaselinePath()))){File.Delete(PendingSyncPath);return true;}throw new InvalidOperationException("上次同步已写入电脑，但手机后来又有修改。请导出当前保护包后手动核对，未覆盖手机改动。");}
+        await connection.CommitSync(new(intent.Operation,intent.Choices,true));await InstallMergedSnapshot(await connection.Snapshot());
+        await File.WriteAllTextAsync(Path.Combine(intent.Folder,"sync-history.json"),JsonSerializer.Serialize(new{intent.Operation,Status="completed-after-reconnect",At=DateTimeOffset.UtcNow},DeskJson.Options));
+        File.Delete(PendingSyncPath);return true;
     }
     private async Task CachePcBackup(HttpWorkspaceGateway connection,Guid operation,string folder)
     {
@@ -210,8 +252,8 @@ public sealed class NativeWorkspaceSession : IWorkspaceSession,IAsyncDisposable
     }
     public async Task<string> Backup()
     {
-        if(!IsMobile||Profile.Mode!=WorkspaceMode.Local)throw new InvalidOperationException("电脑账本请使用电脑上的设置与备份；电脑副本可随时重新同步。");
-        var path=Path.Combine(root,"backups","local-"+DateTime.UtcNow.ToString("yyyyMMddHHmmssfff")+".db");await BackupFile(LocalPath,path);return path;
+        if(!IsMobile||Profile.Mode==WorkspaceMode.Remote)throw new InvalidOperationException("联网的电脑账本请使用电脑上的设置与备份。");
+        var folder=Path.Combine(root,"backups","manual-"+DateTime.UtcNow.ToString("yyyyMMddHHmmssfff"));await ProtectCurrentBook(folder);return ZipProtection(folder);
     }
     private static async Task BackupFile(string sourcePath,string targetPath)
     {

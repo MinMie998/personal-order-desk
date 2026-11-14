@@ -17,6 +17,10 @@ public partial class WorkbenchShell : IDisposable
     private ClientOrder? _detail;
     private string _page="overview",_detailTab="info",_search="",_statusFilter="",_moneySearch="";
     private bool _busy,_includeArchived,_dueOnly=true;
+    private MobileRestoreReview? _restoreReview;
+    private Task PreviewLocalRestore()=>Run(async()=>{var path=await Platform.PickBackupFile();if(path is null)return;_restoreReview=await Session.PreviewRestore(path);ShowDialog("restore");});
+    private Task RestoreLocal()=>Run(async()=>{if(!_confirmAction||_restoreReview is null)throw new ArgumentException("请核对并确认恢复。");await Session.RestoreBackup(_restoreReview.Id);_dialog=null;_detail=null;await LoadState();_notice="手机账本已恢复，恢复前保护备份已保留，可以导出留存。";});
+    private Task ExportRestoreBackup()=>Run(async()=>await Platform.ShareFile(await Session.ExportRestoreProtection()));
     private SyncReview? _syncReview;
     private Dictionary<string,string> _syncChoices=new();
     private AvailableUpdate? _update;
@@ -40,7 +44,7 @@ public partial class WorkbenchShell : IDisposable
     private IReadOnlyList<WorkItemRowDto> TodoItems=>(_state?.Sections??[]).SelectMany(x=>x.Items).DistinctBy(x=>x.Id).Take(8).ToArray();
     private static string NextAction(WorkItemRowDto row)=>row.Status==WorkStatus.Completed?(row.OutstandingCents>0?$"待收 {Money(row.OutstandingCents)}":row.FulfillmentState):row.NextStep??StatusName(row.Status);
     private bool QuoteChanged=>_editId.HasValue&&(_editQuote.HasValue?(long?)decimal.ToInt64(decimal.Round(_editQuote.Value*100,0)):null)!=_editBase?.OrderAmountCents;
-    private string DialogTitle=>_dialog switch{"sync"=>"核对双向同步","order"=>_editId.HasValue?"编辑订单":_additionalSource.HasValue?"追加工作":"新增订单","receipt"=>"记收款","refund"=>"记退款","expense"=>"记支出","delete"=>"删除工作项","reverse"=>"撤销记录","status"=>"调整状态",_=>"工作台"};
+    private string DialogTitle=>_dialog switch{"restore"=>"恢复手机账本","sync"=>"核对双向同步","order"=>_editId.HasValue?"编辑订单":_additionalSource.HasValue?"追加工作":"新增订单","receipt"=>"记收款","refund"=>"记退款","expense"=>"记支出","delete"=>"删除工作项","reverse"=>"撤销记录","status"=>"调整状态",_=>"工作台"};
     private IReadOnlyList<WorkStatus> AllowedStatuses=>_detail?.Detail.WorkItem.Status switch{
         WorkStatus.Cancelled=>_detail.Detail.WorkItem.CancelledFromStatus==CancelledStatus.Completed?[WorkStatus.Completed]:[WorkStatus.NotStarted,WorkStatus.InProgress,WorkStatus.NeedsRework],
         WorkStatus.Completed=>[WorkStatus.InProgress,WorkStatus.NeedsRework,WorkStatus.Cancelled],
@@ -131,7 +135,7 @@ public partial class WorkbenchShell : IDisposable
     private Task UseLocal()=>Run(()=>ChangedSource(Session.UseLocal));
     private Task UseSnapshot()=>Run(()=>ChangedSource(Session.UsePcSnapshot));
     private Task ConnectPc()=>Run(async()=>{await ChangedSource(()=>Session.Connect(_serverAddress??"",_serverPassword??""));_serverPassword="";});
-    private Task SyncPc()=>Run(async()=>{_syncReview=await Session.PreviewSync();if(_syncReview is null){if(Session.Profile.Mode==WorkspaceMode.PcSnapshot)await LoadState();_notice="两端备份已完成，电脑副本已建立。可打开副本离线修改，下次同步时合并两端改动。";}else{_syncChoices=_syncReview.Conflicts.ToDictionary(x=>x.Id,_=>"");ShowDialog("sync");}});
+    private Task SyncPc()=>Run(async()=>{_syncReview=await Session.PreviewSync();if(_syncReview is null){if(Session.Profile.Mode==WorkspaceMode.PcSnapshot)await LoadState();_notice="电脑副本已更新；同步保护备份已保留。可离线修改，下次同步时合并两端改动。";}else{_syncChoices=_syncReview.Conflicts.ToDictionary(x=>x.Id,_=>"");ShowDialog("sync");}});
     private Task CommitSync()=>Run(async()=>{if(!_confirmAction||_syncReview is null||_syncChoices.Values.Any(x=>x is not("pc" or "phone")))throw new ArgumentException("请核对全部冲突并勾选确认。");await Session.CommitSync(_syncChoices);_dialog=null;_detail=null;await LoadState();_notice="双向同步完成，两端备份和合并记录已保留；手机独立账本继续单独保存。";});
     private Task BackupLocal()=>Run(async()=>{var path=await Session.Backup();await Platform.ShareFile(path);_notice="本地备份已创建。";});
     private Task ExportSyncBackup()=>Run(async()=>{await Platform.ShareFile(await Session.ExportSyncProtection());_notice="同步前的两端账本与记录已打包，可保存到应用外。";});

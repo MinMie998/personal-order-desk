@@ -11,13 +11,15 @@ namespace PersonalOrderDesk.Api;
 public sealed class ClientApiIdentity
 {
     public ServerInfo Info { get; }
+    public string DataDirectory {get;}
     public ClientApiIdentity(string dataDirectory)
     {
+        DataDirectory=Path.GetFullPath(dataDirectory);
         var path=Path.Combine(dataDirectory,"workstation-id.json");
         var id=File.Exists(path)?JsonSerializer.Deserialize<string>(File.ReadAllText(path)):Guid.NewGuid().ToString("N");
         if(!Guid.TryParse(id,out _))throw new InvalidDataException("工作台身份登记无效，请检查数据目录。");
         if(!File.Exists(path))File.WriteAllText(path,JsonSerializer.Serialize(id));
-        Info=new("PersonalOrderDesk",1,id!,Environment.MachineName,"20261114150000_WorkItemRecycleBin");
+        Info=new("PersonalOrderDesk",1,id!,Environment.MachineName,"20261114150000_WorkItemRecycleBin",BackendCompatibility.CurrentVersion);
     }
 }
 public sealed class ClientApiSessions(IDataProtectionProvider protection,NetworkAccessService network,ClientApiIdentity identity)
@@ -55,6 +57,7 @@ public sealed class ClientApiErrors : IEndpointFilter
         try{return await next(context);}
         catch(DbUpdateConcurrencyException){return Results.Json(new ClientApiError("记录已在其他端更新，请刷新核对后再保存。"),statusCode:409);}
         catch(KeyNotFoundException ex){return Results.Json(new ClientApiError(ex.Message),statusCode:404);}
+        catch(Microsoft.Data.Sqlite.SqliteException){return Results.Json(new ClientApiError("操作与账本约束冲突，本次未完成。请核对记录、重新预览同步；原备份已保留。"),statusCode:400);}
         catch(Exception ex)when(ex is ArgumentException or InvalidOperationException or InvalidDataException){return Results.Json(new ClientApiError(ex.Message),statusCode:400);}
     }
 }
@@ -63,7 +66,7 @@ public static class ClientApiEndpoints
     public static void MapClientApi(this WebApplication app,string databasePath,string dataDirectory)
     {
         var api=app.MapGroup("/api/v1").AddEndpointFilter<ClientApiErrors>();
-        api.MapGet("/info",(ClientApiIdentity identity)=>identity.Info);
+        api.MapGet("/info",(ClientApiIdentity identity,HttpContext context)=>identity.Info with{LocalDataDirectory=NetworkAccessService.IsLocal(context)?identity.DataDirectory:null});
         api.MapPost("/sync/backup",async(SyncProtectionRequest request,IWorkbenchService service,DeskDbContext db,CancellationToken ct)=>{
             if(request.OperationId==Guid.Empty)throw new ArgumentException("同步编号无效。");
             var path=Path.Combine(dataDirectory,"Backups",$"sync-before-{request.OperationId:N}.db");

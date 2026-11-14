@@ -16,6 +16,7 @@ public static class SyncMergeApi
     public static void MapSyncMerge(this WebApplication app,string database,string dataDirectory)
     {
         var api=app.MapGroup("/api/v1/sync").AddEndpointFilter<ClientApiErrors>();
+        api.MapGet("/{operation:guid}/status",async(Guid operation,CancellationToken ct)=>await ThreeWaySync.AppliedSync(database,operation,ct) is not null);
         api.MapPost("/preview",async(SyncMergeRequest request,ClientApiIdentity identity,SyncMergePlans plans,CancellationToken ct)=>{
             if(request.InstanceId!=identity.Info.InstanceId)throw new InvalidOperationException("同步来源不是当前电脑，未修改账本。");
             var backup=Path.Combine(dataDirectory,"Backups",$"sync-before-{request.OperationId:N}.db");
@@ -28,13 +29,17 @@ public static class SyncMergeApi
         });
         api.MapPost("/commit",async(SyncCommitRequest request,SyncMergePlans plans,IBusinessClock clock,CancellationToken ct)=>{
             if(!request.Confirm)throw new ArgumentException("请核对同步内容并确认。");
+            var choiceHash=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(request.Choices.OrderBy(x=>x.Key,StringComparer.Ordinal),DeskJson.Options))));
+            var applied=await ThreeWaySync.AppliedSync(database,request.OperationId,ct);
+            if(applied is not null){if(applied!=choiceHash)throw new InvalidOperationException("该同步已完成，不能更换冲突选择。请刷新手机副本后重新预览。");return true;}
             var plan=plans.Get(request.OperationId);await plan.Gate.WaitAsync(ct);
             try{
-                if(plan.Applied)return true;
+                var stored=await ThreeWaySync.AppliedSync(database,request.OperationId,ct);
+                if(stored is not null){if(stored!=choiceHash)throw new InvalidOperationException("该同步已完成，不能更换冲突选择。");return true;}
                 if(plan.Review.Conflicts.Any(c=>!request.Choices.TryGetValue(c.Id,out var choice)||choice is not("pc" or "phone")))throw new ArgumentException("每处冲突都需要选择保留电脑还是手机内容。");
                 var current=await ThreeWaySync.Read(database,ct);if(ThreeWaySync.Fingerprint(current)!=plan.Review.PcFingerprint)throw new InvalidOperationException("预览后电脑数据已变化，请重新同步预览。");
                 var merged=ThreeWaySync.Merge(plan.Input.Baseline,current,plan.Input.Phone,request.Choices);
-                await ThreeWaySync.Apply(database,plan.Review.PcFingerprint,merged.Data,clock.Today,ct);plan.Applied=true;
+                await ThreeWaySync.Apply(database,plan.Review.PcFingerprint,merged.Data,clock.Today,ct,request.OperationId,choiceHash);plan.Applied=true;
                 var history=Path.Combine(dataDirectory,"Backups",$"sync-before-{request.OperationId:N}.result.json");
                 await File.WriteAllTextAsync(history,JsonSerializer.Serialize(new{OperationId=request.OperationId,AppliedAt=DateTimeOffset.UtcNow,plan.Review.PcChanges,plan.Review.PhoneChanges,Choices=request.Choices},DeskJson.Options),ct);
                 return true;

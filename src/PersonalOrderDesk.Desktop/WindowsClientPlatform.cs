@@ -7,6 +7,7 @@ using PersonalOrderDesk.Client;
 namespace PersonalOrderDesk.Desktop;
 public sealed class WindowsClientPlatform : IClientPlatform
 {
+    public Task<string?> PickBackupFile()=>Task.FromException<string?>(new NotSupportedException("手机保护包请在手机App中恢复。"));
     public Task OpenUpdate(string path){Process.Start(new ProcessStartInfo(path){UseShellExecute=true});return Task.CompletedTask;}
     public async Task CopyText(string text)=>await Application.Current.Dispatcher.InvokeAsync(()=>Clipboard.SetText(text));
     public Task OpenWeb(string path){Process.Start(new ProcessStartInfo("http://127.0.0.1:5059/"+path.TrimStart('/')){UseShellExecute=true});return Task.CompletedTask;}

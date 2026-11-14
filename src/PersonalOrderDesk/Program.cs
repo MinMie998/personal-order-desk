@@ -15,13 +15,14 @@ var configuredDataPath = builder.Configuration["PersonalOrderDesk:DataDirectory"
     ?? Environment.GetEnvironmentVariable("PERSONAL_ORDER_DESK_DATA_DIR");
 var dataPath = StorageLocationGuard.ResolveDataDirectory(configuredDataPath, AppContext.BaseDirectory,
     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PersonalOrderDesk"));
+builder.Configuration["PersonalOrderDesk:DataDirectory"] = dataPath;
 var registrationPath = StorageLocationGuard.RegistrationPath(AppContext.BaseDirectory, dataPath,
     configuredDataPath is not null && Environment.GetEnvironmentVariable("PERSONAL_ORDER_DESK_DEFAULT_STORAGE") != "1");
 StorageLocationGuard.Validate(dataPath, registrationPath);
 Directory.CreateDirectory(dataPath);
 var networkAccess = new NetworkAccessService(dataPath);
 builder.Services.AddSingleton(networkAccess);
-builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataPath, "Keys")));
+builder.Services.AddDataProtection().SetApplicationName("PersonalOrderDesk").PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataPath, "Keys")));
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
 {
     options.LoginPath = "/Access/Login";
