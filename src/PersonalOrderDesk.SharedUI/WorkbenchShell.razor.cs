@@ -36,6 +36,7 @@ public partial class WorkbenchShell : IDisposable
     private IEnumerable<OrderMoneySummary> VisibleMoney=>(_state?.Money??[]).Where(x=>(!_dueOnly||x.Due>0||x.Due is null)&&Match(_moneySearch,x.Number,x.Name));
     private UnsettledCopyList CopyList=>UnsettledCopyList.From(VisibleMoney);
     private IReadOnlyList<WorkItemRowDto> TodoItems=>(_state?.Sections??[]).SelectMany(x=>x.Items).DistinctBy(x=>x.Id).Take(8).ToArray();
+    private static string NextAction(WorkItemRowDto row)=>row.Status==WorkStatus.Completed?(row.OutstandingCents>0?$"待收 {Money(row.OutstandingCents)}":row.FulfillmentState):row.NextStep??StatusName(row.Status);
     private bool QuoteChanged=>_editId.HasValue&&(_editQuote.HasValue?(long?)decimal.ToInt64(decimal.Round(_editQuote.Value*100,0)):null)!=_editBase?.OrderAmountCents;
     private string DialogTitle=>_dialog switch{"order"=>_editId.HasValue?"编辑订单":_additionalSource.HasValue?"追加工作":"新增订单","receipt"=>"记收款","refund"=>"记退款","expense"=>"记支出","delete"=>"删除工作项","reverse"=>"撤销记录","status"=>"调整状态",_=>"工作台"};
     private IReadOnlyList<WorkStatus> AllowedStatuses=>_detail?.Detail.WorkItem.Status switch{

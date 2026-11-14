@@ -17,6 +17,7 @@ public sealed class ClientProfile
     public string? SnapshotName {get;set;}
     public DateTimeOffset? SnapshotAt {get;set;}
     public string? PaymentMethod {get;set;}
+    public string? LastSyncProtection {get;set;}
 }
 public interface IClientSecretStore
 {
@@ -110,12 +111,26 @@ public sealed class NativeWorkspaceSession : IWorkspaceSession,IAsyncDisposable
     }
     public async Task SyncPc()
     {
-        using var connection=await Remote();var bytes=await connection.Snapshot();
+        using var connection=await Remote();
+        var operation=Guid.NewGuid();var protection=Path.Combine(root,"backups","sync-"+DateTime.UtcNow.ToString("yyyyMMddHHmmssfff")+"-"+operation.ToString("N"));Directory.CreateDirectory(protection);
+        var log=Path.Combine(protection,"sync-history.json");
+        var prior=Guid.TryParse(Profile.SnapshotInstance,out _)?Path.Combine(SnapshotFolder(Profile.SnapshotInstance),"app.db"):null;
+        SyncProtectionReceipt? pcBackup=null;
+        try {
+            if(File.Exists(LocalPath))await BackupFile(LocalPath,Path.Combine(protection,"phone-independent.db"));
+            if(prior is not null&&File.Exists(prior))await BackupFile(prior,Path.Combine(protection,"previous-pc-copy.db"));
+            await File.WriteAllTextAsync(log,JsonSerializer.Serialize(new{Operation=operation,Status="phone-protected",Pc=Profile.ServerInstance,CreatedAt=DateTimeOffset.UtcNow},DeskJson.Options));
+            pcBackup=await connection.ProtectSync(operation);
+            if(pcBackup.OperationId!=operation)throw new InvalidDataException("电脑备份编号不一致，同步已停止。");
+            var bytes=await connection.Snapshot();
         var folder=SnapshotFolder(Profile.ServerInstance);var target=Path.Combine(folder,"app.db");
         var known=KnownMigrations();
         using var stream=new MemoryStream(bytes);var manifest=await PortableSnapshot.ValidateAndWrite(stream,target,Profile.ServerInstance!,known);
         Profile.SnapshotInstance=manifest.InstanceId;Profile.SnapshotName=manifest.Name;Profile.SnapshotAt=manifest.CreatedAt;await SaveProfile();
-        if(Profile.Mode==WorkspaceMode.PcSnapshot)await UsePcSnapshot();
+            Profile.LastSyncProtection=$"{operation:N} · PC：{pcBackup.BackupFile} · 手机：{protection}";await SaveProfile();
+            await File.WriteAllTextAsync(log,JsonSerializer.Serialize(new{Operation=operation,Status="completed",Pc=Profile.ServerInstance,PcBackup=pcBackup,CompletedAt=DateTimeOffset.UtcNow},DeskJson.Options));
+            if(Profile.Mode==WorkspaceMode.PcSnapshot)await UsePcSnapshot();
+        }catch(Exception ex){await File.WriteAllTextAsync(log,JsonSerializer.Serialize(new{Operation=operation,Status="failed",PcBackup=pcBackup,Error=ex.Message,At=DateTimeOffset.UtcNow},DeskJson.Options));throw;}
     }
     public async Task UsePcSnapshot()
     {

@@ -64,6 +64,17 @@ public static class ClientApiEndpoints
     {
         var api=app.MapGroup("/api/v1").AddEndpointFilter<ClientApiErrors>();
         api.MapGet("/info",(ClientApiIdentity identity)=>identity.Info);
+        api.MapPost("/sync/backup",async(SyncProtectionRequest request,IWorkbenchService service,DeskDbContext db,CancellationToken ct)=>{
+            if(request.OperationId==Guid.Empty)throw new ArgumentException("同步编号无效。");
+            var path=Path.Combine(dataDirectory,"Backups",$"sync-before-{request.OperationId:N}.db");
+            if(!File.Exists(path)){
+                var result=await service.CreateBackup(path,ct);
+                if(!result.Succeeded)throw new InvalidOperationException(result.Error??"电脑备份未完成，同步已停止。");
+                await File.WriteAllTextAsync(path+".manifest.json",JsonSerializer.Serialize(new{ProductId="PersonalOrderDesk",Schema=(await db.Database.GetAppliedMigrationsAsync(ct)).Last(),CreatedAt=DateTimeOffset.UtcNow,SyncOperation=request.OperationId}),ct);
+            }
+            if(!File.Exists(path+".manifest.json"))throw new InvalidOperationException("电脑同步备份清单缺失，同步已停止。");
+            return new SyncProtectionReceipt(request.OperationId,Path.GetFileName(path),File.GetCreationTimeUtc(path));
+        });
         api.MapPost("/session",(SessionRequest request,HttpContext context,NetworkAccessService network,ClientApiSessions sessions)=>{
             if(!NetworkAccessService.IsLocal(context)&&!network.VerifyPassword(context.Connection.RemoteIpAddress?.ToString()??"unknown",request.Password??""))
                 return Results.Json(new ClientApiError("密码错误或尝试次数过多，请稍后重试。"),statusCode:401);
