@@ -83,7 +83,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          cat packages/windows-package/SHA256SUMS.txt packages/android-package/SHA256SUMS.txt > packages/SHA256SUMS.txt
+          mkdir -p publish
+          find packages/windows-package -type f -name '*.zip' -exec cp {} publish/ \;
+          find packages/android-package -type f -name '*.apk' -exec cp {} publish/ \;
+          find packages -type f -name SHA256SUMS.txt -exec cat {} \; > publish/SHA256SUMS.txt
+          (cd publish && sha256sum -c SHA256SUMS.txt)
           flags=()
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$GITHUB_REF_NAME" --notes "Windows、Web 服务和 Android 工作台预览版。安装前请阅读仓库说明并备份账本。" "${flags[@]}" packages/windows-package/*.zip packages/android-package/*.apk packages/SHA256SUMS.txt
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$GITHUB_REF_NAME" --notes "Windows、Web 服务和 Android 工作台预览版。安装前请阅读仓库说明并备份账本。" "${flags[@]}" publish/*.zip publish/*.apk publish/SHA256SUMS.txt
