@@ -1,0 +1,19 @@
+{
+  "appVersion": "3.0.0-preview.1",
+  "product": "PersonalOrderDesk",
+  "format": "personal-order-desk.update",
+  "prerelease": true,
+  "windows": {
+    "sha256": "cb415b36ddbc891148201b742ad41d17364d612eec1994d02dfc2da402dc78e7",
+    "url": "https://github.com/MinMie998/personal-order-desk/releases/download/v3.0.0-preview.1/PersonalOrderDesk-3.0.0-preview.1-windows-x64.zip",
+    "bytes": 7185684
+  },
+  "version": 1,
+  "android": {
+    "url": "https://github.com/MinMie998/personal-order-desk/releases/download/v3.0.0-preview.1/PersonalOrderDesk-3.0.0-preview.1-android.apk",
+    "sha256": "c6259f74fd3f7a9ee0fcf3b0d2c97416de1ef598823f9b363ffb0074a1598efa",
+    "applicationId": "com.personalorderdesk.nativepreview",
+    "bytes": 3030786,
+    "versionCode": 7
+  }
+}
