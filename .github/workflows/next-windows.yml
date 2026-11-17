@@ -1,0 +1,45 @@
+name: Next Windows build
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v3.*']
+    paths: ['next/**', '.github/workflows/next-windows.yml']
+  pull_request:
+    paths: ['next/**', '.github/workflows/next-windows.yml']
+permissions:
+  contents: read
+jobs:
+  windows-next:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: next/web/package-lock.json
+      - name: Select Rust toolchain
+        run: rustup default stable
+      - name: Verify release tag matches application version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          VERSION_TAG: ${{ github.ref_name }}
+        run: |
+          $version=(Get-Content next/desktop/tauri.conf.json -Raw|ConvertFrom-Json).version
+          if($env:VERSION_TAG -ne "v$version"){throw 'Tag does not match the Windows application version'}
+      - name: Test merge, reset, money and protected storage
+        run: cargo test --locked --manifest-path next/rust/Cargo.toml -p desk-sync-core -p desk-sync -p desk-storage -p desk-server
+      - name: Build and package clean Windows application
+        shell: pwsh
+        run: ./next/scripts/Package-Next-Windows.ps1
+      - name: Verify synthetic local HTTP workflow
+        run: node next/scripts/Test-Next-Local.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: next-windows-package
+          path: |
+            releases/Windows交付/*.zip
+            releases/Windows交付/SHA256SUMS.txt
+          if-no-files-found: error

@@ -1,0 +1,16 @@
+[package]
+name="desk-storage"
+version.workspace=true
+edition.workspace=true
+[dependencies]
+sqlx={version="0.8",default-features=false,features=["runtime-tokio","sqlite"]}
+serde_json.workspace=true
+serde.workspace=true
+desk-domain={path="../domain"}
+desk-sync={path="../sync"}
+chrono={version="0.4",features=["serde"]}
+uuid={version="1",features=["v4"]}
+[target.'cfg(windows)'.dependencies]
+windows-sys={version="0.61",features=["Win32_Storage_FileSystem"]}
+[dev-dependencies]
+tokio={version="1",features=["macros","rt-multi-thread"]}

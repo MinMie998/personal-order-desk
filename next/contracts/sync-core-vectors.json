@@ -1,0 +1,311 @@
+[
+  {
+    "name": "unicode-exact-money-normalization",
+    "request": {
+      "bridgeVersion": 1,
+      "operation": "normalize",
+      "snapshot": {
+        "format": 2,
+        "generation": "legacy",
+        "workspaceId": "11111111-1111-4111-8111-111111111111",
+        "orders": {
+          "order": {
+            "id": "order",
+            "title": "合成项目",
+            "progress": "原始",
+            "quoteCents": "9007199254740993",
+            "revision": 7,
+            "deletedAt": null,
+            "status": "doing",
+            "completedDate": null,
+            "kind": "simulation",
+            "acceptedDate": "2026-11-15",
+            "dueDate": "2026-11-16",
+            "tasks": [],
+            "historicalDates": false
+          }
+        },
+        "money": {},
+        "preferences": {},
+        "history": {}
+      }
+    },
+    "expected": {
+      "snapshot": {
+        "format": 2,
+        "generation": "legacy",
+        "workspaceId": "11111111-1111-4111-8111-111111111111",
+        "orders": {
+          "order": {
+            "id": "order",
+            "title": "合成项目",
+            "progress": "原始",
+            "quoteCents": "9007199254740993",
+            "deletedAt": null,
+            "status": "doing",
+            "completedDate": null,
+            "kind": "simulation",
+            "acceptedDate": "2026-11-15",
+            "dueDate": "2026-11-16",
+            "tasks": [],
+            "historicalDates": false
+          }
+        },
+        "money": {},
+        "preferences": {},
+        "history": {}
+      },
+      "canonical": "{\"format\":2,\"generation\":\"legacy\",\"history\":{},\"money\":{},\"orders\":{\"order\":{\"acceptedDate\":\"2026-11-15\",\"completedDate\":null,\"deletedAt\":null,\"dueDate\":\"2026-11-16\",\"historicalDates\":false,\"id\":\"order\",\"kind\":\"simulation\",\"progress\":\"原始\",\"quoteCents\":\"9007199254740993\",\"status\":\"doing\",\"tasks\":[],\"title\":\"合成项目\"}},\"preferences\":{},\"workspaceId\":\"11111111-1111-4111-8111-111111111111\"}",
+      "digest": "fd7ab3fe69e7c97614e2c99ba4db8a3ae6c77f16b0cb3dd5ed471bbdcbaac69e"
+    }
+  },
+  {
+    "name": "independent-project-fields",
+    "request": {
+      "bridgeVersion": 1,
+      "operation": "merge",
+      "base": {
+        "format": 2,
+        "generation": "legacy",
+        "workspaceId": "11111111-1111-4111-8111-111111111111",
+        "orders": {
+          "order": {
+            "id": "order",
+            "title": "合成项目",
+            "progress": "原始",
+            "quoteCents": "9007199254740993",
+            "revision": 7,
+            "deletedAt": null,
+            "status": "doing",
+            "completedDate": null,
+            "kind": "simulation",
+            "acceptedDate": "2026-11-15",
+            "dueDate": "2026-11-16",
+            "tasks": [],
+            "historicalDates": false
+          }
+        },
+        "money": {},
+        "preferences": {},
+        "history": {}
+      },
+      "local": {
+        "format": 2,
+        "generation": "legacy",
+        "workspaceId": "11111111-1111-4111-8111-111111111111",
+        "orders": {
+          "order": {
+            "id": "order",
+            "title": "合成项目",
+            "progress": "已焊接",
+            "quoteCents": "9007199254740993",
+            "revision": 7,
+            "deletedAt": null,
+            "status": "doing",
+            "completedDate": null,
+            "kind": "simulation",
+            "acceptedDate": "2026-11-15",
+            "dueDate": "2026-11-16",
+            "tasks": [],
+            "historicalDates": false
+          }
+        },
+        "money": {},
+        "preferences": {},
+        "history": {}
+      },
+      "remote": {
+        "format": 2,
+        "generation": "legacy",
+        "workspaceId": "11111111-1111-4111-8111-111111111111",
+        "orders": {
+          "order": {
+            "id": "order",
+            "title": "远端名称",
+            "progress": "原始",
+            "quoteCents": "9007199254740993",
+            "revision": 7,
+            "deletedAt": null,
+            "status": "doing",
+            "completedDate": null,
+            "kind": "simulation",
+            "acceptedDate": "2026-11-15",
+            "dueDate": "2026-11-16",
+            "tasks": [],
+            "historicalDates": false
+          }
+        },
+        "money": {},
+        "preferences": {},
+        "history": {}
+      }
+    },
+    "expected": {
+      "snapshot": {
+        "format": 2,
+        "generation": "legacy",
+        "workspaceId": "11111111-1111-4111-8111-111111111111",
+        "orders": {
+          "order": {
+            "id": "order",
+            "title": "远端名称",
+            "progress": "已焊接",
+            "quoteCents": "9007199254740993",
+            "revision": 0,
+            "deletedAt": null,
+            "status": "doing",
+            "completedDate": null,
+            "kind": "simulation",
+            "acceptedDate": "2026-11-15",
+            "dueDate": "2026-11-16",
+            "tasks": [],
+            "historicalDates": false
+          }
+        },
+        "money": {},
+        "preferences": {},
+        "history": {}
+      },
+      "conflicts": [],
+      "digest": "e92d761e4f7871cfb5c18ba62673bd379750c7ec4e62c03ff6923e4158b73ad3"
+    }
+  },
+  {
+    "name": "same-amount-different-money-ids-kept",
+    "request": {
+      "bridgeVersion": 1,
+      "operation": "merge",
+      "base": {
+        "format": 2,
+        "generation": "legacy",
+        "workspaceId": "11111111-1111-4111-8111-111111111111",
+        "orders": {
+          "order": {
+            "id": "order",
+            "title": "合成项目",
+            "progress": "原始",
+            "quoteCents": "9007199254740993",
+            "revision": 7,
+            "deletedAt": null,
+            "status": "doing",
+            "completedDate": null,
+            "kind": "simulation",
+            "acceptedDate": "2026-11-15",
+            "dueDate": "2026-11-16",
+            "tasks": [],
+            "historicalDates": false
+          }
+        },
+        "money": {},
+        "preferences": {},
+        "history": {}
+      },
+      "local": {
+        "format": 2,
+        "generation": "legacy",
+        "workspaceId": "11111111-1111-4111-8111-111111111111",
+        "orders": {
+          "order": {
+            "id": "order",
+            "title": "合成项目",
+            "progress": "原始",
+            "quoteCents": "9007199254740993",
+            "revision": 7,
+            "deletedAt": null,
+            "status": "doing",
+            "completedDate": null,
+            "kind": "simulation",
+            "acceptedDate": "2026-11-15",
+            "dueDate": "2026-11-16",
+            "tasks": [],
+            "historicalDates": false
+          }
+        },
+        "money": {
+          "receipt-a": {
+            "id": "receipt-a",
+            "orderId": "order",
+            "amountCents": "5000",
+            "kind": "receipt"
+          }
+        },
+        "preferences": {},
+        "history": {}
+      },
+      "remote": {
+        "format": 2,
+        "generation": "legacy",
+        "workspaceId": "11111111-1111-4111-8111-111111111111",
+        "orders": {
+          "order": {
+            "id": "order",
+            "title": "合成项目",
+            "progress": "原始",
+            "quoteCents": "9007199254740993",
+            "revision": 7,
+            "deletedAt": null,
+            "status": "doing",
+            "completedDate": null,
+            "kind": "simulation",
+            "acceptedDate": "2026-11-15",
+            "dueDate": "2026-11-16",
+            "tasks": [],
+            "historicalDates": false
+          }
+        },
+        "money": {
+          "receipt-b": {
+            "id": "receipt-b",
+            "orderId": "order",
+            "amountCents": "5000",
+            "kind": "receipt"
+          }
+        },
+        "preferences": {},
+        "history": {}
+      }
+    },
+    "expected": {
+      "snapshot": {
+        "format": 2,
+        "generation": "legacy",
+        "workspaceId": "11111111-1111-4111-8111-111111111111",
+        "orders": {
+          "order": {
+            "id": "order",
+            "title": "合成项目",
+            "progress": "原始",
+            "quoteCents": "9007199254740993",
+            "revision": 0,
+            "deletedAt": null,
+            "status": "doing",
+            "completedDate": null,
+            "kind": "simulation",
+            "acceptedDate": "2026-11-15",
+            "dueDate": "2026-11-16",
+            "tasks": [],
+            "historicalDates": false
+          }
+        },
+        "money": {
+          "receipt-a": {
+            "id": "receipt-a",
+            "orderId": "order",
+            "amountCents": "5000",
+            "kind": "receipt"
+          },
+          "receipt-b": {
+            "id": "receipt-b",
+            "orderId": "order",
+            "amountCents": "5000",
+            "kind": "receipt"
+          }
+        },
+        "preferences": {},
+        "history": {}
+      },
+      "conflicts": [],
+      "digest": "23db6a520352edba89cd9584ac0ea4e3c70998174dd09334a4106d48fa771329"
+    }
+  }
+]

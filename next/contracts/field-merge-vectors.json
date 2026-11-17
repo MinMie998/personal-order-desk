@@ -1,0 +1,68 @@
+[
+  {
+    "name": "different_fields",
+    "baseline": {
+      "progress": "old",
+      "next": "old"
+    },
+    "local": {
+      "progress": "local",
+      "next": "old"
+    },
+    "remote": {
+      "progress": "old",
+      "next": "remote"
+    },
+    "expected_fields": {
+      "progress": "local",
+      "next": "remote"
+    },
+    "expected_conflicts": []
+  },
+  {
+    "name": "same_field_conflict",
+    "baseline": {
+      "progress": "old"
+    },
+    "local": {
+      "progress": "local"
+    },
+    "remote": {
+      "progress": "remote"
+    },
+    "expected_fields": {},
+    "expected_conflicts": [
+      "progress"
+    ]
+  },
+  {
+    "name": "same_change",
+    "baseline": {
+      "progress": "old"
+    },
+    "local": {
+      "progress": "done"
+    },
+    "remote": {
+      "progress": "done"
+    },
+    "expected_fields": {
+      "progress": "done"
+    },
+    "expected_conflicts": []
+  },
+  {
+    "name": "delete_vs_edit",
+    "baseline": {
+      "note": "old"
+    },
+    "local": {},
+    "remote": {
+      "note": "new"
+    },
+    "expected_fields": {},
+    "expected_conflicts": [
+      "note"
+    ]
+  }
+]

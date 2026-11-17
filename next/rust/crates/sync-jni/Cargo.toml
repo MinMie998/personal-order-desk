@@ -1,0 +1,10 @@
+[package]
+name = "desk-sync-jni"
+version.workspace = true
+edition.workspace = true
+[lib]
+name = "desk_sync_jni"
+crate-type = ["cdylib", "rlib"]
+[dependencies]
+desk-sync-core = { path = "../sync-core" }
+jni = "0.21"

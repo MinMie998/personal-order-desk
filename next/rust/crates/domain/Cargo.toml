@@ -1,0 +1,10 @@
+[package]
+name = "desk-domain"
+version.workspace = true
+edition.workspace = true
+[dependencies]
+serde.workspace = true
+[dev-dependencies]
+serde_json.workspace = true
+aes-gcm = "0.10"
+hex = "0.4"

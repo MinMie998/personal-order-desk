@@ -31,3 +31,17 @@ appsettings.Local.json
 *.pfx
 *.pem
 *.key
+
+# v3 rebuild artifacts
+/next/rust/target/
+/next/web/node_modules/
+/next/web/dist/
+/next/desktop/target/
+/next/android/.gradle/
+/next/android/.kotlin/
+/next/android/local.properties
+/next/android/**/build/
+
+/next/desktop/gen/
+
+/next/android/app/src/main/jniLibs/

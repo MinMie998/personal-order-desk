@@ -1,1 +1,0 @@
-window.desk={copy:async function(text){try{await navigator.clipboard.writeText(text);return;}catch{}const e=document.createElement('textarea');e.value=text;e.style.position='fixed';e.style.opacity='0';document.body.appendChild(e);e.select();const ok=document.execCommand('copy');e.remove();if(!ok)throw new Error('浏览器未允许复制，请使用预览手动复制。');}};
